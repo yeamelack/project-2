@@ -58,15 +58,21 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
 
         // TODO (Change 2): Handle different cases for input source
         #ifdef EXEC
-            execl(executable_name, executable_name, input, NULL);
+            execl(executable_path, buffer, input, NULL);
 
         #elif REDIR
             // TODO: Redirect STDIN to input/<input>.in file
+	    char bffer[255];
+            sprintf(bffer, "input/%s.in", input);
+            dup2(bffer, 0);
             
             
         #elif PIPE
             
             // TODO: Pass read end of pipe to child process
+	    close(fd[1]);
+            read(fd[0], output, sizeof(output));
+            close(fd[0]);
 
         #endif
 
@@ -78,6 +84,9 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
     else if (pid > 0) {
         #ifdef PIPE
             // TODO: Send input to child process via pipe
+	    close(fd[0]);
+            write(fd[1], input, sizeof(input) + 1);
+            close(fd[1]);
             
         #endif
 
