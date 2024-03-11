@@ -1,255 +1,123 @@
-#include "utils.h"
-#include <cstdio>
+#ifndef UTILS_H
+#define UTILS_H
+
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <signal.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <string.h>
+#include <sys/time.h>
+#include <time.h>
+#include <limits.h> // For PATH_MAX
+#include <errno.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
 
 
+#define TIMEOUT_SECS 10    // Timeout threshold for stuck/infinite loop
 
-const char* get_status_message(int status) {
-    switch (status) {
-        case CORRECT: return "correct";
-        case INCORRECT: return "incorrect";
-        case SEGFAULT: return "crash";
-        case STUCK_OR_INFINITE: return "stuck/inf";
-        default: return "unknown";
-    }
-}
+// Main struct for storing the results of the autograder
+typedef struct {
+    char *exe_path;       // path to executable
+    int *params_tested;   // array of parameters tested
+    int *status;          // array of exit status codes for each parameter
+} autograder_results_t;
 
 
-char *get_exe_name(char *path) {
-    return strrchr(path, '/') + 1;
-}
+// Message buffer struct for message queue
+typedef struct {
+    long mtype;
+    char mtext[100];
+} msgbuf_t;
 
 
-int get_tag(char *executable_name) {
-    unsigned int seed = 0;
-    for (int i = 0; i < strlen(executable_name); i++) {
-        seed += (int)executable_name[i];
-    }
-    return seed;
-}
+// Define an enum for the program execution outcomes
+enum {
+    CORRECT = 1,            // Corresponds to case 1: Exit with status 0 (correct answer)
+    INCORRECT,              // Corresponds to case 2: Exit with status 1 (incorrect answer)
+    SEGFAULT,               // Corresponds to case 3: Triggering a segmentation fault
+    STUCK_OR_INFINITE       // Corresponds to case 4 and 5: Stuck, or in an infinite loop
+};
 
 
-char **get_student_executables(char *solution_dir, int *num_executables) {
-    DIR *dir;
-    struct dirent *entry;
-    struct stat st;
+// Expects a string of the form "sol_1"
+int get_tag(char *executable_name);
 
-    // Open the directory
-    dir = opendir(solution_dir);
-    if (!dir) {
-        perror("Failed to open directory");
-        exit(EXIT_FAILURE);
-    }
+// Helper function to get executable name from path
+// Example: solutions/sol_1 -> sol_1
+char *get_exe_name(char *path);
 
-    // Count the number of executables
-    *num_executables = 0;
-    while ((entry = readdir(dir)) != NULL) {
-        // Ignore hidden files
-        char path[PATH_MAX];
-        sprintf(path, "%s/%s", solution_dir, entry->d_name);
-        
-        if (stat(path, &st) == 0) {
-            if (S_ISREG(st.st_mode) && entry->d_name[0] != '.')
-                (*num_executables)++;
-        } 
-        else {
-            perror("Failed to get file status");
-            exit(EXIT_FAILURE);
-        }
-    }
+// Function to convert status macro to the corresponding message
+// Example: CORRECT -> "correct"
+const char* get_status_message(int status);
 
-    // Allocate memory for the array of strings
-    char **executables = (char **) malloc(*num_executables * sizeof(char *));
-
-    // Reset the directory stream
-    rewinddir(dir);
-
-    // Read the file names
-    int i = 0;
-    while ((entry = readdir(dir)) != NULL) {
-        // Ignore hidden files
-        char path[PATH_MAX];
-        sprintf(path, "%s/%s", solution_dir, entry->d_name);
-
-        if (stat(path, &st) == 0) {
-            if (S_ISREG(st.st_mode) && entry->d_name[0] != '.') {
-                executables[i] = (char *) malloc((strlen(solution_dir) + strlen(entry->d_name) + 2) * sizeof(char));
-                sprintf(executables[i], "%s/%s", solution_dir, entry->d_name);
-                i++;
-            }
-        }
-    }
-
-    // Close the directory
-    closedir(dir);
-
-    // Return the array of strings (remember to free the memory later)
-    return executables;
-}
+// Takes in path to solutions directory and integer address for storing the 
+// total number of executables in the solutions directory. Returns a malloc'd
+// array of strings containing the executable paths.
+char **get_student_executables(char *solution_dir, int *num_executables);
 
 
-// TODO: Implement this function
-int get_batch_size() {
-    int batchsize = 0;
-    FILE *cpuinfo = fopen("/proc/cpuinfo", "r");
-    if(cpuinfo == NULL){
-        perror("/proc/cpuinfo failed to open");
-        exit(EXIT_FAILURE);
-    }
-    char buff[255];
-    while(fgets(buff, sizeof(buff), cpuinfo)!= NULL){
-        if(strstr(buff, "cpu cores") != NULL){
-            sscanf(buff, "cpu cores : %d", &batchsize);
-            break;
-        }
-    }
-    fclose(cpuinfo);
-    return batchsize;
-}
-   
+// Count the number of times the pattern "processor" occurs in /proc/cpuinfo
+int get_batch_size();
 
 
-// TODO: Implement this function
-void create_input_files(char **argv_params, int num_parameters) {
-    if(argv_params == NULL || num_parameters <= 0){
-        perror("argv_params is either NULL or num_paramerter is less than 1. try again");
-        exit(EXIT_FAILURE);
-    }
-    for(int i; i<num_parameters; i++){
-        char filename[127];
-        sprintf(filename, "input/student_%d.in", i);
-        FILE *file = fopen(filename, "w");
-
-        if(file == NULL){
-            perror("failed opening student file");
-            exit(EXIT_FAILURE);
-        }
-
-        fprintf(file, "%s" , argv_params[i]);
-        fclose(file);
-    }
-}
-
-// TODO: Implement this function
-void remove_input_files(char **argv_params, int num_parameters) {
-    if(argv_params == NULL || num_parameters <= 0){
-        perror("argv_params is either NULL or num_paramerter is less than 1. try again");
-        exit(EXIT_FAILURE);
-    }
-    for(int i=0; i<num_parameters; i++){
-        char filename[127];
-        sprintf(filename, "input/student_%d.in", i);
-
-        if(unlink(filename) != 0){
-            perror("cannot remove file");
-            exit(EXIT_FAILURE);
-        }
-    }
-
-}
+// Create the input/<input>.in files for each parameter
+void create_input_files(char **argv_params, int num_parameters);
 
 
-// TODO: Implement this function
-void remove_output_files(autograder_results_t *results, int tested, int current_batch_size, char *param) {
-    
-}
+// Unlink all of the input/<input>.in files
+void remove_input_files(char **argv_params, int num_parameters);
 
 
-int get_longest_len_executable(autograder_results_t *results, int num_executables) {
-    int longest_len = 0;
-    for (int i = 0; i < num_executables; i++) {
-        char *exe_name = get_exe_name(results[i].exe_path);
-        int len = strlen(exe_name);
-        if (len > longest_len) {
-            longest_len = len;
-        }
-    }
-    return longest_len;
-}
- 
-
-void write_results_to_file(autograder_results_t *results, int num_executables, int total_params) {
-    FILE *file = fopen("results.txt", "w");
-    if (!file) {
-        perror("Failed to open file");
-        return;
-    }
-
-    // Find the longest executable name (for formatting purposes)
-    int longest_len = 0;
-    for (int i = 0; i < num_executables; i++) {
-        char *exe_name = get_exe_name(results[i].exe_path);
-        int len = strlen(exe_name);
-        if (len > longest_len) {
-            longest_len = len;
-        }
-    }
-
-    // Sort the results data structure by executable name (specifically number at the end)
-    for (int i = 0; i < num_executables; i++) {
-        for (int j = i + 1; j < num_executables; j++) {
-            char *exe_name_i = get_exe_name(results[i].exe_path);
-            int num_i = atoi(strrchr(exe_name_i, '_') + 1);
-            char *exe_name_j = get_exe_name(results[j].exe_path);
-            int num_j = atoi(strrchr(exe_name_j, '_') + 1);
-            if (num_i > num_j) {
-                autograder_results_t temp = results[i];
-                results[i] = results[j];
-                results[j] = temp;
-            }
-        }
-    }
-
-    // Write results to file
-    for (int i = 0; i < num_executables; i++) {
-        char *exe_name = get_exe_name(results[i].exe_path);
-
-        char format[20];
-        sprintf(format, "%%-%ds:", longest_len);
-        fprintf(file, format, exe_name); // Write the program path
-        for (int j = 0; j < total_params; j++) {
-            fprintf(file, "%5d (", results[i].params_tested[j]); // Write the pi value for the program
-            const char* message = get_status_message(results[i].status[j]);
-            fprintf(file, "%9s) ", message); // Write each status
-        }
-        fprintf(file, "\n");
-    }
-
-    fclose(file);
-}
+// Unlink all of the output/<executable>.<param> files in the current batch
+void remove_output_files(autograder_results_t *results, int tested, int current_batch_size, char *param);
 
 
-// TODO: Implement this function
-double get_score(char *results_file, char *executable_name) {
-    return 1.0;
-}
+/*
+Writes autograder_results_t to a file called results.txt
+
+Note: For the format syntax, let <name:width> denote a field with contents "name" and width "width".
+Here is the format (this will be useful for implementing the scores() function):
+
+<exe_name:strlen(longest_exe_name)>:<p1:5> (<status1:9>)<p2:5> (<status2:9>)...<pN:5> (<statusN:9>)
+
+where N is the number of parameters tested and all fields are right-aligned except for exe_name.
+*/
+void write_results_to_file(autograder_results_t *results, int num_executables, int total_params);
 
 
-void write_scores_to_file(autograder_results_t *results, int num_executables, char *results_file) {
-    for (int i = 0; i < num_executables; i++) {
-        double student_score = get_score(results_file, results[i].exe_path);
-        char *student_exe = get_exe_name(results[i].exe_path);
+/*
+Gets the line containing executable_name's results from the results file and 
+calculates the percentage of correct answers for the executable. You must use 
+a *seek() function to make this efficient. For more information on the format 
+of the results file, see utils.c/write_results_to_file(). Hint: each line of 
+the file will have the same length. You should use fgets() or getline() AT MOST 
+twice in this function - once for the first line and once for the line containing 
+the executable's results. 
 
-        char score_file[] = "scores.txt";
+Example inputs:
+    results_file: "results.txt"
+    executable_name: "solutions/sol_5"
 
-        FILE *score_fp;
-        if (i == 0)
-            score_fp = fopen(score_file, "w");
-        else
-            score_fp = fopen(score_file, "a");
+Example output:
+    0.5
+*/
+double get_score(char *results_file, char *executable_name);
 
-        if (!score_fp) {
-            perror("Failed to open score file");
-            exit(1);
-        }
 
-        int longest_len = get_longest_len_executable(results, num_executables);
+/*
+This function goes through each executable and calculates the score using scores().
+Then it writes the scores to a file called scores.txt. The format of the file is
 
-        char format[20];
-        sprintf(format, "%%-%ds: ", longest_len);
-        fprintf(score_fp, format, student_exe);
-        fprintf(score_fp, "%5.3f\n", student_score);
+<exe_name:strlen(longest_exe_name)>: <score:5.3f>
 
-        fclose(score_fp);
-    }
-}
+where <exe_name> is the name of the executable and <score> is the score of the executable.
+*/
+void write_scores_to_file(autograder_results_t *results, int num_executables, char *results_file);
+
+#endif // UTILS_H
