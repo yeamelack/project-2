@@ -1,4 +1,7 @@
 #include "utils.h"
+#include <cstdio>
+#include <stdio.h>
+
 
 
 const char* get_status_message(int status) {
@@ -87,24 +90,68 @@ char **get_student_executables(char *solution_dir, int *num_executables) {
 
 // TODO: Implement this function
 int get_batch_size() {
-    return 8;
+    int batchsize = 0;
+    FILE *cpuinfo = fopen("/proc/cpuinfo", "r");
+    if(cpuinfo == NULL){
+        perror("/proc/cpuinfo failed to open");
+        exit(EXIT_FAILURE);
+    }
+    char buff[255];
+    while(fgets(buff, sizeof(buff), cpuinfo)!= NULL){
+        if(strstr(buff, "cpu cores") != NULL){
+            sscanf(buff, "cpu cores : %d", &batchsize);
+            break;
+        }
+    }
+    fclose(cpuinfo);
+    return batchsize;
 }
+   
 
 
 // TODO: Implement this function
 void create_input_files(char **argv_params, int num_parameters) {
+    if(argv_params == NULL || num_parameters <= 0){
+        perror("argv_params is either NULL or num_paramerter is less than 1. try again");
+        exit(EXIT_FAILURE);
+    }
+    for(int i; i<num_parameters; i++){
+        char filename[127];
+        sprintf(filename, "input/student_%d.in", i);
+        FILE *file = fopen(filename, "w");
 
+        if(file == NULL){
+            perror("failed opening student file");
+            exit(EXIT_FAILURE);
+        }
+
+        fprintf(file, "%s" , argv_params[i]);
+        fclose(file);
+    }
 }
 
 // TODO: Implement this function
 void remove_input_files(char **argv_params, int num_parameters) {
+    if(argv_params == NULL || num_parameters <= 0){
+        perror("argv_params is either NULL or num_paramerter is less than 1. try again");
+        exit(EXIT_FAILURE);
+    }
+    for(int i=0; i<num_parameters; i++){
+        char filename[127];
+        sprintf(filename, "input/student_%d.in", i);
+
+        if(unlink(filename) != 0){
+            perror("cannot remove file");
+            exit(EXIT_FAILURE);
+        }
+    }
 
 }
 
 
 // TODO: Implement this function
 void remove_output_files(autograder_results_t *results, int tested, int current_batch_size, char *param) {
-
+    
 }
 
 
