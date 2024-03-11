@@ -140,7 +140,7 @@ void remove_input_files(char **argv_params, int num_parameters) {
         char filename[127];
         sprintf(filename, "input/student_%d.in", i);
 
-        if(unlink(filename) != 0){
+        if(unlink(filename) != 0){ //might be remove instead of unlink. new todos says unlink so i used that instead.
             perror("cannot remove file");
             exit(EXIT_FAILURE);
         }
