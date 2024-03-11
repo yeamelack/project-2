@@ -1,199 +1,255 @@
 #include "utils.h"
-
-// Batch size is determined at runtime now
-pid_t *pids;
-
-// Stores the results of the autograder (see utils.h for details)
-autograder_results_t *results;
-
-int num_executables;      // Number of executables in test directory
-int curr_batch_size;      // At most batch_size executables will be run at once
-int total_params;         // Total number of parameters to test - (argc - 2)
-
-// Contains status of child processes (-1 for done, 1 for still running)
-int *child_status;
+#include <cstdio>
+#include <stdio.h>
 
 
-// TODO: Timeout handler for alarm signal
-void timeout_handler(int signum) {
 
-}
-
-
-// Execute the student's executable using exec()
-void execute_solution(char *executable_path, char *input, int batch_idx) {
-    #ifdef PIPE
-        // TODO: Setup pipe
-
-    #endif
-    
-    pid_t pid = fork();
-
-    // Child process
-    if (pid == 0) {
-        char *executable_name = get_exe_name(executable_path);
-
-        // TODO (Change 1): Redirect STDOUT to output/<executable>.<input> file
-
-
-        // TODO (Change 2): Handle different cases for input source
-        #ifdef EXEC
-
-
-        #elif REDIR
-            
-            // TODO: Redirect STDIN to input/<input>.in file
-            
-
-        #elif PIPE
-            
-            // TODO: Pass read end of pipe to child process
-
-        #endif
-
-        // If exec fails
-        perror("Failed to execute program");
-        exit(1);
-    } 
-    // Parent process
-    else if (pid > 0) {
-        #ifdef PIPE
-            // TODO: Send input to child process via pipe
-            
-        #endif
-
-        // TODO (Change 3): Setup timer to determine if child process is stuck
-        
-
-        pids[batch_idx] = pid;
-    }
-    // Fork failed
-    else {
-        perror("Failed to fork");
-        exit(1);
+const char* get_status_message(int status) {
+    switch (status) {
+        case CORRECT: return "correct";
+        case INCORRECT: return "incorrect";
+        case SEGFAULT: return "crash";
+        case STUCK_OR_INFINITE: return "stuck/inf";
+        default: return "unknown";
     }
 }
 
 
-// Wait for the batch to finish and check results
-void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
-    // Keep track of finished processes for alarm handler
-    child_status = malloc(curr_batch_size * sizeof(int));
-    for (int j = 0; j < curr_batch_size; j++) {
-        child_status[j] = 1;
-    }
-
-    // MAIN EVALUATION LOOP: Wait until each process has finished or timed out
-    for (int j = 0; j < curr_batch_size; j++) {
-
-        int status;
-        pid_t pid = waitpid(pids[j], &status, 0);
-
-        // TODO: Determine if the child process finished normally, segfaulted, or timed out
-        int exit_status = WEXITSTATUS(status);
-        int exited = WIFEXITED(status);
-        int signaled = WIFSIGNALED(status);
-        
-        
-        // TODO: Also, update the results struct with the status of the child process
-
-
-        // Adding tested parameter to results struct
-        results[tested - curr_batch_size + j].params_tested[param_idx] = atoi(param);
-
-        // Mark the process as finished
-        child_status[j] = -1;
-    }
-
-    // TODO: Cancel the timer
-
-
-    free(child_status);
+char *get_exe_name(char *path) {
+    return strrchr(path, '/') + 1;
 }
 
 
+int get_tag(char *executable_name) {
+    unsigned int seed = 0;
+    for (int i = 0; i < strlen(executable_name); i++) {
+        seed += (int)executable_name[i];
+    }
+    return seed;
+}
 
-int main(int argc, char *argv[]) {
-    if (argc < 3) {
-        printf("Usage: %s <testdir> <p1> <p2> ... <pn>\n", argv[0]);
-        return 1;
+
+char **get_student_executables(char *solution_dir, int *num_executables) {
+    DIR *dir;
+    struct dirent *entry;
+    struct stat st;
+
+    // Open the directory
+    dir = opendir(solution_dir);
+    if (!dir) {
+        perror("Failed to open directory");
+        exit(EXIT_FAILURE);
     }
 
-    char *testdir = argv[1];
-    total_params = argc - 2;
-
-    // TODO (Change 0): Implement get_batch_size() function
-    int batch_size = get_batch_size();
-
-    char **executable_paths = get_student_executables(testdir, &num_executables);
-
-    // Construct summary struct
-    results = malloc(num_executables * sizeof(autograder_results_t));
-    for (int i = 0; i < num_executables; i++) {
-        results[i].exe_path = executable_paths[i];
-        results[i].params_tested = malloc((total_params) * sizeof(int));
-        results[i].status = malloc((total_params) * sizeof(int));
-    }
-
-    #ifdef REDIR
-        // TODO: Create the input/<input>.in files        
-        create_input_files(argv + 2, total_params);  // Implement this function (src/utils.c)
-    #endif
-    
-    // MAIN LOOP: For each parameter, run all executables in batch size chunks
-    for (int i = 2; i < argc; i++) {
-        int remaining = num_executables;
-	    int tested = 0;
-
-        // Test the parameter on each executable
-        while (remaining > 0) {
-
-            // Determine current batch size - min(remaining, batch_size)
-            curr_batch_size = remaining < batch_size ? remaining : batch_size;
-            pids = malloc(curr_batch_size * sizeof(pid_t));
-		
-            // Execute the programs in batch size chunks
-            for (int j = 0; j < curr_batch_size; j++) {
-                execute_solution(executable_paths[tested], argv[i], j);
-		        tested++;
-            }
-
-            // Wait for the batch to finish and check results
-            monitor_and_evaluate_solutions(tested, argv[i], i - 2);
-
-            // TODO Unlink all output files in current batch (output/<executable>.<input>)
-            remove_output_files(results, tested, curr_batch_size, argv[i]);  // Implement this function (src/utils.c)
-            
-
-            // Adjust the remaining count after the batch has finished
-            remaining -= curr_batch_size;
+    // Count the number of executables
+    *num_executables = 0;
+    while ((entry = readdir(dir)) != NULL) {
+        // Ignore hidden files
+        char path[PATH_MAX];
+        sprintf(path, "%s/%s", solution_dir, entry->d_name);
+        
+        if (stat(path, &st) == 0) {
+            if (S_ISREG(st.st_mode) && entry->d_name[0] != '.')
+                (*num_executables)++;
+        } 
+        else {
+            perror("Failed to get file status");
+            exit(EXIT_FAILURE);
         }
     }
 
-    #ifdef REDIR
-        // TODO: Unlink all input files for REDIR case (<input>.in)
-        remove_input_files(argv + 2, total_params);  // Implement this function (src/utils.c)
-    #endif
+    // Allocate memory for the array of strings
+    char **executables = (char **) malloc(*num_executables * sizeof(char *));
 
-    write_results_to_file(results, num_executables, total_params);
+    // Reset the directory stream
+    rewinddir(dir);
 
-    // You can use this to debug your scores function
-    // get_score("results.txt", results[0].exe_path);
+    // Read the file names
+    int i = 0;
+    while ((entry = readdir(dir)) != NULL) {
+        // Ignore hidden files
+        char path[PATH_MAX];
+        sprintf(path, "%s/%s", solution_dir, entry->d_name);
 
-    // Print each score to scores.txt
-    write_scores_to_file(results, num_executables, "results.txt");
-
-    // Free the results struct and its fields
-    for (int i = 0; i < num_executables; i++) {
-        free(results[i].exe_path);
-        free(results[i].params_tested);
-        free(results[i].status);
+        if (stat(path, &st) == 0) {
+            if (S_ISREG(st.st_mode) && entry->d_name[0] != '.') {
+                executables[i] = (char *) malloc((strlen(solution_dir) + strlen(entry->d_name) + 2) * sizeof(char));
+                sprintf(executables[i], "%s/%s", solution_dir, entry->d_name);
+                i++;
+            }
+        }
     }
 
-    free(results);
-    free(executable_paths);
+    // Close the directory
+    closedir(dir);
 
-    free(pids);
+    // Return the array of strings (remember to free the memory later)
+    return executables;
+}
+
+
+// TODO: Implement this function
+int get_batch_size() {
+    int batchsize = 0;
+    FILE *cpuinfo = fopen("/proc/cpuinfo", "r");
+    if(cpuinfo == NULL){
+        perror("/proc/cpuinfo failed to open");
+        exit(EXIT_FAILURE);
+    }
+    char buff[255];
+    while(fgets(buff, sizeof(buff), cpuinfo)!= NULL){
+        if(strstr(buff, "cpu cores") != NULL){
+            sscanf(buff, "cpu cores : %d", &batchsize);
+            break;
+        }
+    }
+    fclose(cpuinfo);
+    return batchsize;
+}
+   
+
+
+// TODO: Implement this function
+void create_input_files(char **argv_params, int num_parameters) {
+    if(argv_params == NULL || num_parameters <= 0){
+        perror("argv_params is either NULL or num_paramerter is less than 1. try again");
+        exit(EXIT_FAILURE);
+    }
+    for(int i; i<num_parameters; i++){
+        char filename[127];
+        sprintf(filename, "input/student_%d.in", i);
+        FILE *file = fopen(filename, "w");
+
+        if(file == NULL){
+            perror("failed opening student file");
+            exit(EXIT_FAILURE);
+        }
+
+        fprintf(file, "%s" , argv_params[i]);
+        fclose(file);
+    }
+}
+
+// TODO: Implement this function
+void remove_input_files(char **argv_params, int num_parameters) {
+    if(argv_params == NULL || num_parameters <= 0){
+        perror("argv_params is either NULL or num_paramerter is less than 1. try again");
+        exit(EXIT_FAILURE);
+    }
+    for(int i=0; i<num_parameters; i++){
+        char filename[127];
+        sprintf(filename, "input/student_%d.in", i);
+
+        if(unlink(filename) != 0){
+            perror("cannot remove file");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+}
+
+
+// TODO: Implement this function
+void remove_output_files(autograder_results_t *results, int tested, int current_batch_size, char *param) {
     
-    return 0;
-}     
+}
+
+
+int get_longest_len_executable(autograder_results_t *results, int num_executables) {
+    int longest_len = 0;
+    for (int i = 0; i < num_executables; i++) {
+        char *exe_name = get_exe_name(results[i].exe_path);
+        int len = strlen(exe_name);
+        if (len > longest_len) {
+            longest_len = len;
+        }
+    }
+    return longest_len;
+}
+ 
+
+void write_results_to_file(autograder_results_t *results, int num_executables, int total_params) {
+    FILE *file = fopen("results.txt", "w");
+    if (!file) {
+        perror("Failed to open file");
+        return;
+    }
+
+    // Find the longest executable name (for formatting purposes)
+    int longest_len = 0;
+    for (int i = 0; i < num_executables; i++) {
+        char *exe_name = get_exe_name(results[i].exe_path);
+        int len = strlen(exe_name);
+        if (len > longest_len) {
+            longest_len = len;
+        }
+    }
+
+    // Sort the results data structure by executable name (specifically number at the end)
+    for (int i = 0; i < num_executables; i++) {
+        for (int j = i + 1; j < num_executables; j++) {
+            char *exe_name_i = get_exe_name(results[i].exe_path);
+            int num_i = atoi(strrchr(exe_name_i, '_') + 1);
+            char *exe_name_j = get_exe_name(results[j].exe_path);
+            int num_j = atoi(strrchr(exe_name_j, '_') + 1);
+            if (num_i > num_j) {
+                autograder_results_t temp = results[i];
+                results[i] = results[j];
+                results[j] = temp;
+            }
+        }
+    }
+
+    // Write results to file
+    for (int i = 0; i < num_executables; i++) {
+        char *exe_name = get_exe_name(results[i].exe_path);
+
+        char format[20];
+        sprintf(format, "%%-%ds:", longest_len);
+        fprintf(file, format, exe_name); // Write the program path
+        for (int j = 0; j < total_params; j++) {
+            fprintf(file, "%5d (", results[i].params_tested[j]); // Write the pi value for the program
+            const char* message = get_status_message(results[i].status[j]);
+            fprintf(file, "%9s) ", message); // Write each status
+        }
+        fprintf(file, "\n");
+    }
+
+    fclose(file);
+}
+
+
+// TODO: Implement this function
+double get_score(char *results_file, char *executable_name) {
+    return 1.0;
+}
+
+
+void write_scores_to_file(autograder_results_t *results, int num_executables, char *results_file) {
+    for (int i = 0; i < num_executables; i++) {
+        double student_score = get_score(results_file, results[i].exe_path);
+        char *student_exe = get_exe_name(results[i].exe_path);
+
+        char score_file[] = "scores.txt";
+
+        FILE *score_fp;
+        if (i == 0)
+            score_fp = fopen(score_file, "w");
+        else
+            score_fp = fopen(score_file, "a");
+
+        if (!score_fp) {
+            perror("Failed to open score file");
+            exit(1);
+        }
+
+        int longest_len = get_longest_len_executable(results, num_executables);
+
+        char format[20];
+        sprintf(format, "%%-%ds: ", longest_len);
+        fprintf(score_fp, format, student_exe);
+        fprintf(score_fp, "%5.3f\n", student_score);
+
+        fclose(score_fp);
+    }
+}
