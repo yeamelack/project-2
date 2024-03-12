@@ -1,7 +1,10 @@
 #include "utils.h"
 #include <fcntl.h>
-
-
+#include <signal.h>
+#include <sys/time.h>
+#include <stdlib.h>
+#include <stdio.h>
+#define TIMEOUT_SECS 10
 // Batch size is determined at runtime now
 pid_t *pids;
 
@@ -16,9 +19,20 @@ int total_params;         // Total number of parameters to test - (argc - 2)
 int *child_status;
 
 
+
 // TODO: Timeout handler for alarm signal
 void timeout_handler(int signum) {
-
+    if(child_status == NULL)
+    {
+        return;
+    }
+    for(int i = 0 ; i < curr_batch_size; i++)
+    {
+        if(child_status[i] == 1)
+        {
+            kill(pids[i], SIGKILL);
+        }
+    }
 }
 
 
@@ -43,9 +57,9 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
         // TODO (Change 1): Redirect STDOUT to output/<executable>.<input> file
         char buffer[255];
         sprintf(buffer, "output/%s.%s", executable_name, input);
-        int output = fopen(buffer, O_WRONLY|O_CREAT|O_TRUNC);
+        FILE *output = fopen(buffer, "w");
         if(output == -1){
-            perror("openning file failed");
+            perror("opening file failed");
             exit(EXIT_FAILURE);
         }
         if(dup2(output, 1) == -1){
@@ -62,17 +76,11 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
 
         #elif REDIR
             // TODO: Redirect STDIN to input/<input>.in file
-	    char bffer[255];
-            sprintf(bffer, "input/%s.in", input);
-            dup2(bffer, 0);
-            
+
             
         #elif PIPE
             
             // TODO: Pass read end of pipe to child process
-	    close(fd[1]);
-            read(fd[0], output, sizeof(output));
-            close(fd[0]);
 
         #endif
 
@@ -84,17 +92,29 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
     else if (pid > 0) {
         #ifdef PIPE
             // TODO: Send input to child process via pipe
-	    close(fd[0]);
-            write(fd[1], input, sizeof(input) + 1);
-            close(fd[1]);
             
         #endif
 
         // TODO (Change 3): Setup timer to determine if child process is stuck
-        
+        struct sigaction sa;
+        sa.sa_handler = timeout_handler;
+        sigemptyset(&sa.sa_mask);
+
+        if(sigaction(SIGUSR1, &sa, NULL) == -1) {
+            perror("sigaction");
+            exit(EXIT_FAILURE);
+        }
+        alarm(TIMEOUT_SECS);
+
+        struct itimerval timer;
+        timer.it_value.tv_sec = TIMEOUT_SECS;
+        timer.it_interval.tv_sec = 0;
+        if (setitimer(ITIMER_REAL, &timer, NULL) == -1) {
+            perror("setitimer");
+            exit(EXIT_FAILURE);
+        }
 
         pids[batch_idx] = pid;
-        batch_idx++; 
     }
     // Fork failed
     else {
@@ -123,10 +143,13 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
         int exited = WIFEXITED(status);
         int signaled = WIFSIGNALED(status);
         
+
+
+        
         
         // TODO: Also, update the results struct with the status of the child process
 
-
+        results[tested - curr_batch_size + j].status = exit_status; //check this
         // Adding tested parameter to results struct
         results[tested - curr_batch_size + j].params_tested[param_idx] = atoi(param);
 
@@ -135,7 +158,11 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
     }
 
     // TODO: Cancel the timer
-
+    struct itimerval end_timer;
+        if (setitimer(ITIMER_REAL, &end_timer, NULL) == -1) {
+            perror("setitimer");
+            exit(EXIT_FAILURE);
+        }
 
     free(child_status);
 }
@@ -221,9 +248,6 @@ int main(int argc, char *argv[]) {
 
     free(results);
     free(executable_paths);
-
     free(pids);
-    
     return 0;
 }     
-
