@@ -79,14 +79,12 @@ char **get_student_executables(char *solution_dir, int *num_executables) {
             }
         }
     }
-
     // Close the directory
     closedir(dir);
 
     // Return the array of strings (remember to free the memory later)
     return executables;
 }
-
 
 // TODO: Implement this function
 int get_batch_size() {
@@ -106,8 +104,6 @@ int get_batch_size() {
     fclose(cpuinfo);
     return batchsize;
 }
-   
-
 
 // TODO: Implement this function
 void create_input_files(char **argv_params, int num_parameters) {
@@ -117,7 +113,7 @@ void create_input_files(char **argv_params, int num_parameters) {
     }
     for(int i; i<num_parameters; i++){
         char filename[127];
-        sprintf(filename, "input/input_%d", i);
+        sprintf(filename, "input/input_%d.in", i);
         FILE *file = fopen(filename, "w");
 
         if(file == NULL){
@@ -130,6 +126,7 @@ void create_input_files(char **argv_params, int num_parameters) {
     }
 }
 
+
 void remove_input_files(char **argv_params, int num_parameters) {
     if(argv_params == NULL || num_parameters <= 0){
         perror("argv_params is either NULL or num_paramerter is less than 1. try again");
@@ -139,7 +136,7 @@ void remove_input_files(char **argv_params, int num_parameters) {
         char filename[127];
         sprintf(filename, "input/input_%d.in", i);
 
-        if(unlink(filename) != 0){
+        if(remove(filename) != 0){
             perror("cannot remove file");
             exit(EXIT_FAILURE);
         }
