@@ -117,7 +117,7 @@ void create_input_files(char **argv_params, int num_parameters) {
     }
     for(int i; i<num_parameters; i++){
         char filename[127];
-        sprintf(filename, "input/student_%d.in", i);
+        sprintf(filename, "input/input_%d", i);
         FILE *file = fopen(filename, "w");
 
         if(file == NULL){
@@ -130,7 +130,6 @@ void create_input_files(char **argv_params, int num_parameters) {
     }
 }
 
-// TODO: Implement this function
 void remove_input_files(char **argv_params, int num_parameters) {
     if(argv_params == NULL || num_parameters <= 0){
         perror("argv_params is either NULL or num_paramerter is less than 1. try again");
@@ -138,14 +137,13 @@ void remove_input_files(char **argv_params, int num_parameters) {
     }
     for(int i=0; i<num_parameters; i++){
         char filename[127];
-        sprintf(filename, "input/student_%d.in", i);
+        sprintf(filename, "input/input_%d.in", i);
 
         if(unlink(filename) != 0){
             perror("cannot remove file");
             exit(EXIT_FAILURE);
         }
     }
-
 }
 
 
