@@ -121,13 +121,14 @@ void create_input_files(char **argv_params, int num_parameters) {
 
 // TODO: Implement this function
 void start_timer(int seconds, void (*timeout_handler)(int)) {
-
+    signal(SIGALRM, timeout_handler);
+    alarm(seconds);
 }
 
 
 // TODO: Implement this function
 void cancel_timer() {
-
+    alarm(0);
 }
 
 
@@ -152,7 +153,15 @@ void remove_input_files(char **argv_params, int num_parameters) {
 
 // TODO: Implement this function
 void remove_output_files(autograder_results_t *results, int tested, int current_batch_size, char *param) {
-
+    //check this -----------------
+    for (int i = tested - current_batch_size; i < tested; i++) {
+        char *exe_name = get_exe_name(results[i].exe_path);
+        char filename[255];
+        sprintf(filename, "output/%s.%s", exe_name, param);
+        if (remove(filename) != 0) {
+            perror("Error removing output file");
+        }
+    }
 }
 
 
