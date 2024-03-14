@@ -68,13 +68,19 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
 
 
         #elif REDIR
-            
             // TODO: Redirect STDIN to input/<input>.in file
-            
+            if(dup2(fd, 1) == -1){ // double check should be correct
+                perror(EXIT_FAILURE);
+            }
+            close(fd); // closing the file descriptor
+
 
         #elif PIPE
-            
             // TODO: Pass read end of pipe to child process
+            // Double check
+            close(fd[1]); // closing the write end of the pipr in the child that was opened in the parent
+            read(fd[0], buffer, sizeof(buffer)); // Reading from the pipe here 
+            close(fd[0]); // closing the read of the pipe when we are finished in the child process
 
         #endif
 
@@ -86,11 +92,12 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
     else if (pid > 0) {
         #ifdef PIPE
             // TODO: Send input to child process via pipe
-            
-            
+            close(fd[0]);
+            write(fd[1], input, sizeof(input)+1);
+            close(fd[1]);
+
         #endif
         
-
         pids[batch_idx] = pid;
     }
     // Fork failed
@@ -116,12 +123,33 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
         pid_t pid = waitpid(pids[j], &status, 0);
 
         // TODO: What if waitpid is interrupted by a signal?
-        
+        if (pid == EINTR){
+            status;
+            pid = waitpid(pids[j], &status, 0);
+        }
 
         // TODO: Determine if the child process finished normally, segfaulted, or timed out
         int exit_status = WEXITSTATUS(status);
         int exited = WIFEXITED(status);
         int signaled = WIFSIGNALED(status);
+        
+        if (pid > 0){
+            if (exited > 0 && signaled <= 0){
+                if (exit_status == 0){
+                    results[tested - curr_batch_size + j].status = CORRECT;
+                }
+                else if (exit_status == 1 && <= 0){
+                    results[tested - curr_batch_size + j].status = INCORRECT;
+                }
+            }
+            else if (signaled == 11){
+                results[tested - curr_batch_size + j].status = SEGFAULT;
+            }
+        }
+        else if (signaled == 9) {
+           
+            results[tested - curr_batch_size + j].status = STUCK_OR_INFINITE;
+        }
         
         
         // TODO: Also, update the results struct with the status of the child process
@@ -137,6 +165,11 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
         // Mark the process as finished
         child_status[j] = -1;
     }
+    struct itimerval end_timer;
+        if (setitimer(ITIMER_REAL, &end_timer, NULL) == -1) {
+            perror("setitimer");
+            exit(EXIT_FAILURE);
+        }
 
     free(child_status);
 }
