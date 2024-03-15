@@ -69,7 +69,7 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
 
         #elif REDIR
             // TODO: Redirect STDIN to input/<input>.in file
-            if(dup2(fd, 1) == -1){ // double check should be correct
+            if(dup2(fd, 0) == -1){ // double check should be correct
                 perror(EXIT_FAILURE);
             }
             close(fd); // closing the file descriptor
