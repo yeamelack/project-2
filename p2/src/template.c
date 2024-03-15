@@ -59,11 +59,13 @@ int main(int argc, char *argv[]) {
             // TODO: Write the result (0) to the output file (output/<executable>.<input>)
             //       Do not open the file. Think about what function you can use to output
             //       information given what you redirected in the autograder.c file.
+            printf("%d", 0);
 
             break;
         case 2:
             fprintf(stderr, "Program: %s, PID: %d, Mode: 2 - Exiting with status 1 (Incorrect answer)\n", argv[0], pid);
             // TODO: Write the result (1) to the output file (same as case 1 above)
+            printf("%d", 1);
             
             break;
         case 3:
