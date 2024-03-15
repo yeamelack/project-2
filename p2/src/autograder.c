@@ -50,12 +50,18 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
         // TODO (Change 1): Redirect STDOUT to output/<executable>.<input> file
         char buffer[255];
         sprintf(buffer, "output/%s.%s", executable_name, input);
+        printf("%s\n", buffer);
         FILE *output = fopen(buffer, "w");
         if(output == -1){
             perror("opening file failed");
             exit(EXIT_FAILURE);
         }
-        if(dup2(output, 1) == -1){
+        int file_fd = fileno(output);
+        if(file_fd == -1) {
+            perror("getting file descriptor failed");
+            exit(EXIT_FAILURE);
+        }
+        if(dup2(file_fd, 1) == -1){
             perror("dup2 failed");
             exit(EXIT_FAILURE);
         }
@@ -69,10 +75,12 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
 
         #elif REDIR
             // TODO: Redirect STDIN to input/<input>.in file
-            if(dup2(fd, 0) == -1){ // double check should be correct
+            char name[255];
+            sprintf(name, "input/%s.in", input);
+            int file_in = fileno(name);
+            if(dup2(file_in, 0) == -1){ 
                 perror(EXIT_FAILURE);
             }
-            close(fd); // closing the file descriptor
 
 
         #elif PIPE
