@@ -30,7 +30,8 @@ void launch_worker(int msqid, int pairs_per_worker, int worker_id) {
     // Parent process
     else if (pid > 0) {
         // TODO: Send the total number of pairs to worker via message queue (mtype = worker_id)
-        msgsnd(worker_id, )
+        char buffer[255];
+        msgsnd(worker_id, buffer, sizeof(buffer), IPC_NOWAIT); // May need to recheck prolly did it wrong
         
 
         // Store the worker's pid for monitoring
@@ -127,19 +128,23 @@ int main(int argc, char *argv[]) {
     workers = malloc(num_workers * sizeof(pid_t));
 
     // Create a unique key for message queue
-    key_t key = IPC_PRIVATE;
+    key_t key = IPC_PRIVATE; // Creates shared space in memory 
 
-    // TODO: Create a message queue
+    // TODO: Create a message queue --> Done
     int msqid;
+    // key_t keyID = ftok(argv[1], 3); // assuming argv[1] holds our path name we are then assiging a unique identfier with it which is 3 -- may need to double check
+    int msgid = msgget(key, IPC_CREAT); // Creating the message queue here if it does not exist otherwise it uses it's own 
+
+    
 
     int num_pairs_to_test = num_executables * total_params;
     
-    // Spawn workers and send them the total number of (executable, parameter) pairs they will test
+    // Spawn workers and send them the total number of (executable, parameter) pairs they will test 
     for (int i = 0; i < num_workers; i++) {
         int leftover = num_pairs_to_test % num_workers - i > 0 ? 1 : 0;
         int pairs_per_worker = num_pairs_to_test / num_workers + leftover;
 
-        // TODO: Spawn worker and send it the number of pairs it will test via message queue
+        // TODO: Spawn worker and send it the number of pairs it will test via message queue --> Done
         launch_worker(msqid, pairs_per_worker, i + 1);
     }
 
@@ -150,8 +155,10 @@ int main(int argc, char *argv[]) {
             msgbuf_t msg;
             long worker_id = sent % num_workers + 1;
             
-            // TODO: Send (executable, parameter) pair to worker via message queue (mtype = worker_id)
-
+            // TODO: Send (executable, parameter) pair to worker via message queue (mtype = worker_id) --> DOUBLE CHECK WITH TA
+            char buf2[255];
+            execl(executable_paths, argv[j], NULL); // --> maybe we are wrong DOUBLE CHECK WITH TA
+            msgsnd(worker_id, msg, sizeof(msg), IPC_NOWAIT); // --> maybe we are wrong DOUBLE CHECK WITH TA
             sent++;
         }
     }
@@ -167,7 +174,7 @@ int main(int argc, char *argv[]) {
 
     // TODO: Remove ALL output files (output/<executable>.<input>)
     //check ------------------
-    remove_output_files(results, msqid, num_workers, total_params);
+    remove_output_files(results, msqid, num_workers, total_params); // --> DOUBLE CHECK THIS WITH TA
 
 
     write_results_to_file(results, num_executables, total_params);
@@ -179,6 +186,7 @@ int main(int argc, char *argv[]) {
     write_scores_to_file(results, num_executables, "results.txt");
 
     // TODO: Remove the message queue
+    msgctl(msqid,IPC_RMID,NULL); // --> double check this MAYBE WRONG
 
 
     // Free the results struct and its fields
