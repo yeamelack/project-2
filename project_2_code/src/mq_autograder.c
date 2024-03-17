@@ -124,6 +124,8 @@ int main(int argc, char *argv[]) {
 
     // TODO: Create a message queue
     int msgid;
+    key_t keyID = ftok(argv[1], 3); // assuming argv[1] holds our path name we are then assiging a unique identfier with it which is 3 may need to double check
+    int msgid = msgget(keyID, IPC_CREAT); // Creating the message queue here if it does not exist otherwise it uses it's own 
     
     // MAIN LOOP: For a batch of executables at a time, test all parameters
     int finished = 0;
