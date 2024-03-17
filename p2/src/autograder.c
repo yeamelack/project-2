@@ -78,10 +78,20 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
             // TODO: Redirect STDIN to input/<input>.in file
             char name[255];
             sprintf(name, "input/%s.in", input);
-            int file_in = fileno(name);
+            FILE *in = fopen(name, "r");
+            if(in == -1){
+                perror("opening file failed");
+                exit(EXIT_FAILURE);
+            }
+            int file_in = fileno(in);
+            if(file_in == -1) {
+                perror("getting file descriptor failed");
+                exit(EXIT_FAILURE);
+            }
             if(dup2(file_in, 0) == -1){ 
                 perror(EXIT_FAILURE);
             }
+            execl(executable_path, executable_name, NULL);
 
         #elif PIPE
             
@@ -143,18 +153,36 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
         int exited = WIFEXITED(status);
         int signaled = WIFSIGNALED(status);
 
-        if (exited > 0 && signaled <= 0){
-            if (exit_status == 0){
-                results[tested - curr_batch_size + j].status = CORRECT;
-            }
-            else if (exit_status == 1){
-                results[tested - curr_batch_size + j].status = INCORRECT;
-            }
+        if(exited && !signaled){
+                char exe =  results[tested - curr_batch_size + j].exe_path;
+                FILE *output = fopen(exe, "r");
+                char buffer[10];
+                int num;
+                if(fgets(buffer, sizeof(buffer), output) != NULL){
+                    sscanf(buffer, "%d", &num);
+                }
+                fclose(output);
+
+        
+                if (num == 0){
+                    results[tested - curr_batch_size + j].status = CORRECT;
+                }
+                else if (num == 1){
+                    results[tested - curr_batch_size + j].status = INCORRECT;
+                }
+
+                }
+                else if(signaled && WTERMSIG(status) ==SIGSEGV)
+                {
+                    results[tested - curr_batch_size + j].status = SEGFAULT;
+                }
+                else if( signaled && WTERMSIG(status) == SIGKILL){
+
+                    results[tested - curr_batch_size + j].status = STUCK_OR_INFINITE;
+
         }
-        else if (signaled == 11){
-            results[tested - curr_batch_size + j].status = SEGFAULT;
-        }
-        else if (signaled == 9){
+        else if (signaled == 9) {
+           
             results[tested - curr_batch_size + j].status = STUCK_OR_INFINITE;
         }
         
@@ -171,6 +199,12 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
 
         // Mark the process as finished
         child_status[j] = -1;
+    }
+    // cehck
+    struct itimerval end_timer;
+    if (setitimer(ITIMER_REAL, &end_timer, NULL) == -1) {
+        perror("setitimer");
+        exit(EXIT_FAILURE);
     }
 
     free(child_status);
