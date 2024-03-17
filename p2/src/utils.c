@@ -78,21 +78,24 @@ char **get_student_executables(char *solution_dir, int *num_executables) {
 
 // TODO: Implement this function
 int get_batch_size() {
-    int batchsize = 0;
-    FILE *cpuinfo = fopen("/proc/cpuinfo", "r");
-    if(cpuinfo == NULL){
-        perror("/proc/cpuinfo failed to open");
-        exit(EXIT_FAILURE);
+    FILE* cpuinfo_file = fopen("/proc/cpuinfo", "r");
+    if (cpuinfo_file == NULL) {
+        fprintf(stderr, "Error: Could not open /proc/cpuinfo\n");
+        exit(1);
     }
-    char buff[255];
-    while(fgets(buff, sizeof(buff), cpuinfo)!= NULL){
-        if(strstr(buff, "cpu cores") != NULL){
-            sscanf(buff, "cpu cores : %d", &batchsize);
-            break;
+
+    char line[256];
+    int processor_count = 0;
+
+    while (fgets(line, sizeof(line), cpuinfo_file)) {
+        if (strstr(line, "processor") != NULL) {
+            processor_count++;
         }
     }
-    fclose(cpuinfo);
-    return batchsize;
+
+    fclose(cpuinfo_file);
+    return processor_count;
+
 }
 
 
