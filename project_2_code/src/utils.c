@@ -1,7 +1,4 @@
 #include "utils.h"
-#include <cstdio>
-#include <stdio.h>
-
 
 
 const char* get_status_message(int status) {
@@ -17,15 +14,6 @@ const char* get_status_message(int status) {
 
 char *get_exe_name(char *path) {
     return strrchr(path, '/') + 1;
-}
-
-
-int get_tag(char *executable_name) {
-    unsigned int seed = 0;
-    for (int i = 0; i < strlen(executable_name); i++) {
-        seed += (int)executable_name[i];
-    }
-    return seed;
 }
 
 
@@ -79,6 +67,7 @@ char **get_student_executables(char *solution_dir, int *num_executables) {
             }
         }
     }
+
     // Close the directory
     closedir(dir);
 
@@ -86,24 +75,29 @@ char **get_student_executables(char *solution_dir, int *num_executables) {
     return executables;
 }
 
+
 // TODO: Implement this function
 int get_batch_size() {
-    int batchsize = 0;
-    FILE *cpuinfo = fopen("/proc/cpuinfo", "r");
-    if(cpuinfo == NULL){
-        perror("/proc/cpuinfo failed to open");
-        exit(EXIT_FAILURE);
+    FILE* cpuinfo_file = fopen("/proc/cpuinfo", "r");
+    if (cpuinfo_file == NULL) {
+        fprintf(stderr, "Error: Could not open /proc/cpuinfo\n");
+        exit(1);
     }
-    char buff[255];
-    while(fgets(buff, sizeof(buff), cpuinfo)!= NULL){
-        if(strstr(buff, "cpu cores") != NULL){
-            sscanf(buff, "cpu cores : %d", &batchsize);
-            break;
+
+    char line[256];
+    int processor_count = 0;
+
+    while (fgets(line, sizeof(line), cpuinfo_file)) {
+        if (strstr(line, "processor") != NULL) {
+            processor_count++;
         }
     }
-    fclose(cpuinfo);
-    return batchsize;
+
+    fclose(cpuinfo_file);
+    return processor_count;
+
 }
+
 
 // TODO: Implement this function
 void create_input_files(char **argv_params, int num_parameters) {
@@ -111,9 +105,9 @@ void create_input_files(char **argv_params, int num_parameters) {
         perror("argv_params is either NULL or num_paramerter is less than 1. try again");
         exit(EXIT_FAILURE);
     }
-    for(int i; i<num_parameters; i++){
+    for(int i = 0; i<num_parameters; i++){
         char filename[127];
-        sprintf(filename, "input/input_%d.in", i);
+        sprintf(filename, "input/%s.in",argv_params[i]);
         FILE *file = fopen(filename, "w");
 
         if(file == NULL){
@@ -124,9 +118,32 @@ void create_input_files(char **argv_params, int num_parameters) {
         fprintf(file, "%s" , argv_params[i]);
         fclose(file);
     }
+
 }
 
 
+// TODO: Implement this function
+void start_timer(int seconds, void (*timeout_handler)(int)) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = timeout_handler;
+    sigemptyset(&sa.sa_mask);
+
+    if(sigaction(SIGALRM, &sa, NULL) == -1) {
+        perror("sigaction");
+        exit(EXIT_FAILURE);
+    }
+    alarm(TIMEOUT_SECS);
+}
+
+
+// TODO: Implement this function
+void cancel_timer() {
+    alarm(0);
+}
+
+
+// TODO: Implement this function
 void remove_input_files(char **argv_params, int num_parameters) {
     if(argv_params == NULL || num_parameters <= 0){
         perror("argv_params is either NULL or num_paramerter is less than 1. try again");
@@ -134,19 +151,28 @@ void remove_input_files(char **argv_params, int num_parameters) {
     }
     for(int i=0; i<num_parameters; i++){
         char filename[127];
-        sprintf(filename, "input/input_%d.in", i);
+        sprintf(filename, "input/%s.in", argv_params[i]);
 
-        if(remove(filename) != 0){
+        if(unlink(filename) != 0){
             perror("cannot remove file");
             exit(EXIT_FAILURE);
         }
     }
+
 }
 
 
 // TODO: Implement this function
 void remove_output_files(autograder_results_t *results, int tested, int current_batch_size, char *param) {
-    
+    //check this -----------------
+    for (int i = tested - current_batch_size; i < tested; i++) {
+        char *exe_name = get_exe_name(results[i].exe_path);
+        char filename[255];
+        sprintf(filename, "output/%s.%s", exe_name, param);
+        if (remove(filename) != 0) {
+            perror("Error removing output file");
+        }
+    }
 }
 
 
