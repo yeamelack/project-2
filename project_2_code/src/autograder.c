@@ -49,7 +49,7 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
         // TODO (Change 1): Redirect STDOUT to output/<executable>.<input> file
         char buffer[255];
         sprintf(buffer, "output/%s.%s", executable_name, input);
-        printf("%s\n", buffer);
+        // printf("%s\n", buffer);
         FILE *output = fopen(buffer, "w");
         if(output == -1){
             perror("opening file failed");
@@ -74,46 +74,30 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
 
         #elif REDIR
             
-            // TODO: Redirect STDIN to input/<input>.in file
-            // char name[255];
-            // sprintf(name, "input/%s.in", input);
-            // printf("%s", name);
-            // FILE *in = fopen(name, "r");
-            // if(in == -1){
-            //     perror("opening file failed");
-            //     exit(EXIT_FAILURE);
-            // }
-            // int file_in = fileno(in);
-            // if(file_in == -1) {
-            //     perror("getting file descriptor failed");
-            //     exit(EXIT_FAILURE);
-            // }
-            // if(dup2(file_in, 0) == -1){ 
-            //     perror(EXIT_FAILURE);
-            // }
-            // execl(executable_path, executable_name, NULL);
+            //TODO: Redirect STDIN to input/<input>.in file
             char name[255];
             sprintf(name, "input/%s.in", input);
-            FILE *in = fopen(name, "r");
-            if(in == -1){
-                perror("opening file failed");
+            printf("%s\n", name);
+            int in = open(name, O_RDONLY);
+            if(in == -1) {
+                perror(name);
                 exit(EXIT_FAILURE);
             }
-            int file_in = fileno(in);
-            if(file_in == -1) {
-                perror("getting file descriptor failed");
-                exit(EXIT_FAILURE);
-            }
-            if(dup2(file_in, 0) == -1){ 
+            if(dup2(in, STDIN_FILENO) == -1){ 
                 perror(EXIT_FAILURE);
             }
             execl(executable_path, executable_name, NULL);
+        
 
         #elif PIPE
             // TODO: Pass read end of pipe to child process
+            char buff[255];
+
             close(fd[1]);
-            read(fd[0], buffer, sizeof(buffer));
+            read(fd[0], buff, sizeof(buff));
             close(fd[0]);
+            printf("%s h", buff);
+            execl(executable_path, executable_name, buff, NULL);
         #endif
 
         // If exec fails
@@ -125,7 +109,7 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
         #ifdef PIPE
             // TODO: Send input to child process via pipe
             close(fd[0]); //maybe this is an issue
-            write(fd[1], input, sizeof(input)+1);
+            write(fd[1], input, sizeof(input));
             close(fd[1]);
             
         #endif
