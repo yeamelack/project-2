@@ -1,0 +1,5 @@
+sol_1:    1 (  unknown)     2 (  unknown)     3 (  unknown) 
+sol_2:    1 (  unknown)     2 (  unknown)     3 (  unknown) 
+sol_3:    1 (  unknown)     2 (  unknown)     3 (  unknown) 
+sol_4:    1 (  unknown)     2 (  unknown)     3 (  unknown) 
+sol_5:    1 (  unknown)     2 (  unknown)     3 (  unknown) 
