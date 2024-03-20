@@ -39,7 +39,7 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
         }
 
     #endif
-    
+
     pid_t pid = fork();
 
     // Child process
@@ -73,7 +73,7 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
 
 
         #elif REDIR
-            
+
             //TODO: Redirect STDIN to input/<input>.in file
             char name[255];
             sprintf(name, "input/%s.in", input);
@@ -87,17 +87,17 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
                 perror(EXIT_FAILURE);
             }
             execl(executable_path, executable_name, NULL);
-        
+
 
         #elif PIPE
             // TODO: Pass read end of pipe to child process
-            char buff[255];
 
-            close(fd[1]);
-            read(fd[0], buff, sizeof(buff));
-            close(fd[0]);
-            printf("%s h", buff);
-            execl(executable_path, executable_name, buff, NULL);
+
+
+            char fdstring[10];
+            sprintf(fdstring, "%d", fd[0]);
+            printf("fdstring: %s\n", fdstring);
+            execl(executable_path, executable_name, fdstring , NULL);
         #endif
 
         // If exec fails
@@ -109,9 +109,10 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
         #ifdef PIPE
             // TODO: Send input to child process via pipe
             close(fd[0]); //maybe this is an issue
-            write(fd[1], input, sizeof(input));
+            int input_value = atoi(input);
+            write(fd[1], &input_value, sizeof(int));
             close(fd[1]);
-            
+
         #endif
         pids[batch_idx] = pid;
     }
@@ -171,6 +172,7 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
                 printf("incorrect\n");
             }
         }
+        
         else if(signaled && WTERMSIG(status) == SIGSEGV){
             results[tested - curr_batch_size + j].status[param_idx] = SEGFAULT;
                 printf("%d ", pid);
@@ -206,7 +208,6 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
     //     perror("setitimer");
     //     exit(EXIT_FAILURE);
     // }
-
     free(child_status);
 }
 
@@ -237,7 +238,7 @@ int main(int argc, char *argv[]) {
         // TODO: Create the input/<input>.in files and write the parameters to them
         create_input_files(argv + 2, total_params);  // Implement this function (src/utils.c)
     #endif
-    
+
     // MAIN LOOP: For each parameter, run all executables in batch size chunks
     for (int i = 2; i < argc; i++) {
         int remaining = num_executables;
@@ -248,7 +249,7 @@ int main(int argc, char *argv[]) {
             // Determine current batch size - min(remaining, batch_size)
             curr_batch_size = remaining < batch_size ? remaining : batch_size;
             pids = malloc(curr_batch_size * sizeof(pid_t));
-		
+
             // TODO: Execute the programs in batch size chunks
             for (int j = 0; j < curr_batch_size; j++) {
                 execute_solution(executable_paths[tested], argv[i], j);
@@ -325,6 +326,6 @@ int main(int argc, char *argv[]) {
     free(executable_paths);
 
     free(pids);
-    
+
     return 0;
 }
