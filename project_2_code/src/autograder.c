@@ -1,10 +1,5 @@
 #include "utils.h"
-#include <fcntl.h>
-#include <signal.h>
-#include <sys/time.h>
-#include <stdlib.h>
-#include <stdio.h>
-#define TIMEOUT_SECS 10
+
 // Batch size is determined at runtime now
 pid_t *pids;
 
@@ -19,29 +14,26 @@ int total_params;         // Total number of parameters to test - (argc - 2)
 int *child_status;
 
 
-
-// TODO: Timeout handler for alarm signal
+// TODO (Change 3): Timeout handler for alarm signal - kill remaining running child processes
 void timeout_handler(int signum) {
-    if(child_status == NULL)
-    {
-        return;
-    }
-    for(int i = 0 ; i < curr_batch_size; i++)
-    {
-        if(child_status[i] == 1)
-        {
-            kill(pids[i], SIGKILL);
+    if(signum == SIGALRM){
+        for(int i = 0 ; i < curr_batch_size; i++){
+            if(child_status[i] == 1){
+                kill(pids[i], SIGKILL);
+            }
         }
+
     }
 }
 
 
 // Execute the student's executable using exec()
-
 void execute_solution(char *executable_path, char *input, int batch_idx) {
     #ifdef PIPE
-        //TODO: Setup pipe
-        if(int pipe(int fd[2]) == -1){
+        // TODO: Setup pipe
+        int fd[2];
+        int p = pipe(fd);
+        if(p == -1){
             perror("pipes failed");
             exit(EXIT_FAILURE);
         }
@@ -57,31 +49,55 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
         // TODO (Change 1): Redirect STDOUT to output/<executable>.<input> file
         char buffer[255];
         sprintf(buffer, "output/%s.%s", executable_name, input);
+        // printf("%s\n", buffer);
         FILE *output = fopen(buffer, "w");
         if(output == -1){
             perror("opening file failed");
             exit(EXIT_FAILURE);
         }
-        if(dup2(output, 1) == -1){
+        int file_fd = fileno(output);
+        if(file_fd == -1) {
+            perror("getting file descriptor failed");
+            exit(EXIT_FAILURE);
+        }
+        if(dup2(file_fd, 1) == -1){
             perror("dup2 failed");
             exit(EXIT_FAILURE);
         }
         fclose(output);
 
 
-
         // TODO (Change 2): Handle different cases for input source
         #ifdef EXEC
             execl(executable_path, buffer, input, NULL);
 
+
         #elif REDIR
-            // TODO: Redirect STDIN to input/<input>.in file
-
             
+            //TODO: Redirect STDIN to input/<input>.in file
+            char name[255];
+            sprintf(name, "input/%s.in", input);
+            printf("%s\n", name);
+            int in = open(name, O_RDONLY);
+            if(in == -1) {
+                perror(name);
+                exit(EXIT_FAILURE);
+            }
+            if(dup2(in, STDIN_FILENO) == -1){ 
+                perror(EXIT_FAILURE);
+            }
+            execl(executable_path, executable_name, NULL);
+        
+
         #elif PIPE
-            
             // TODO: Pass read end of pipe to child process
+            char buff[255];
 
+            close(fd[1]);
+            read(fd[0], buff, sizeof(buff));
+            close(fd[0]);
+            printf("%s h", buff);
+            execl(executable_path, executable_name, buff, NULL);
         #endif
 
         // If exec fails
@@ -92,28 +108,11 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
     else if (pid > 0) {
         #ifdef PIPE
             // TODO: Send input to child process via pipe
+            close(fd[0]); //maybe this is an issue
+            write(fd[1], input, sizeof(input));
+            close(fd[1]);
             
         #endif
-
-        // TODO (Change 3): Setup timer to determine if child process is stuck
-        struct sigaction sa;
-        sa.sa_handler = timeout_handler;
-        sigemptyset(&sa.sa_mask);
-
-        if(sigaction(SIGUSR1, &sa, NULL) == -1) {
-            perror("sigaction");
-            exit(EXIT_FAILURE);
-        }
-        alarm(TIMEOUT_SECS);
-
-        struct itimerval timer;
-        timer.it_value.tv_sec = TIMEOUT_SECS;
-        timer.it_interval.tv_sec = 0;
-        if (setitimer(ITIMER_REAL, &timer, NULL) == -1) {
-            perror("setitimer");
-            exit(EXIT_FAILURE);
-        }
-
         pids[batch_idx] = pid;
     }
     // Fork failed
@@ -138,31 +137,75 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
         int status;
         pid_t pid = waitpid(pids[j], &status, 0);
 
+        // TODO: What if waitpid is interrupted by a signal?
+        if (pid == -1 && errno == EINTR){
+            //CHECK THIS
+            *(results[tested - curr_batch_size + j].status) = STUCK_OR_INFINITE;
+            j++;
+            printf("SOR ");
+            pid = waitpid(pids[j], &status, 0);
+        }
+
         // TODO: Determine if the child process finished normally, segfaulted, or timed out
         int exit_status = WEXITSTATUS(status);
         int exited = WIFEXITED(status);
         int signaled = WIFSIGNALED(status);
-        
 
+        if(exited && !signaled){
+            char *exe =  results[tested - curr_batch_size + j].exe_path;
+            FILE *output = fopen(exe, "r");
+            char buffer[10];
+            int num;
+            if(fgets(buffer, sizeof(buffer), output) != NULL){
+                sscanf(buffer, "%d", &num);
+            }
+            fclose(output); 
+            if (num == 0){
+                *(results[tested - curr_batch_size + j].status) = CORRECT;
+                printf("%d ", pid);
+                printf("correct\n");
+            }
+            else if (num == 1){
+                *(results[tested - curr_batch_size + j].status) = INCORRECT;
+                printf("%d ", pid);
+                printf("incorrect\n");
+            }
+        }
+        else if(signaled && WTERMSIG(status) == SIGSEGV){
+            *(results[tested - curr_batch_size + j].status) = SEGFAULT;
+                printf("%d ", pid);
+                printf("segfault\n");
+        }
 
-        
-        
+        else if(signaled && WTERMSIG(status) == SIGKILL){
+            *(results[tested - curr_batch_size + j].status) = STUCK_OR_INFINITE;
+                printf("%d ", pid);
+                printf("stuck or infinite\n");
+        }
+        // else if (signaled == 9) {         
+        //     *(results[tested - curr_batch_size + j].status) = STUCK_OR_INFINITE;
+        //     printf("stuck or infinite 2\n");
+        // }    
         // TODO: Also, update the results struct with the status of the child process
+        *(results[tested - curr_batch_size + j].status) = exit_status;
 
-        results[tested - curr_batch_size + j].status = exit_status; //check this
+        // NOTE: Make sure you are using the output/<executable>.<input> file to determine the status
+        //       of the child process, NOT the exit status like in Project 1.
         // Adding tested parameter to results struct
         results[tested - curr_batch_size + j].params_tested[param_idx] = atoi(param);
-
         // Mark the process as finished
         child_status[j] = -1;
     }
-
-    // TODO: Cancel the timer
-    struct itimerval end_timer;
-        if (setitimer(ITIMER_REAL, &end_timer, NULL) == -1) {
-            perror("setitimer");
-            exit(EXIT_FAILURE);
-        }
+    // cehck
+    // struct itimerval end_timer;
+    // end_timer.it_value.tv_sec = 0;
+    // end_timer.it_value.tv_usec = 0;
+    // end_timer.it_interval.tv_sec = 0;
+    // end_timer.it_interval.tv_usec = 0;
+    // if (setitimer(ITIMER_REAL, &end_timer, NULL) == -1) {
+    //     perror("setitimer");
+    //     exit(EXIT_FAILURE);
+    // }
 
     free(child_status);
 }
@@ -182,7 +225,6 @@ int main(int argc, char *argv[]) {
     int batch_size = get_batch_size();
 
     char **executable_paths = get_student_executables(testdir, &num_executables);
-
     // Construct summary struct
     results = malloc(num_executables * sizeof(autograder_results_t));
     for (int i = 0; i < num_executables; i++) {
@@ -192,7 +234,7 @@ int main(int argc, char *argv[]) {
     }
 
     #ifdef REDIR
-        // TODO: Create the input/<input>.in files        
+        // TODO: Create the input/<input>.in files and write the parameters to them
         create_input_files(argv + 2, total_params);  // Implement this function (src/utils.c)
     #endif
     
@@ -200,7 +242,6 @@ int main(int argc, char *argv[]) {
     for (int i = 2; i < argc; i++) {
         int remaining = num_executables;
 	    int tested = 0;
-
         // Test the parameter on each executable
         while (remaining > 0) {
 
@@ -208,18 +249,36 @@ int main(int argc, char *argv[]) {
             curr_batch_size = remaining < batch_size ? remaining : batch_size;
             pids = malloc(curr_batch_size * sizeof(pid_t));
 		
-            // Execute the programs in batch size chunks
+            // TODO: Execute the programs in batch size chunks
             for (int j = 0; j < curr_batch_size; j++) {
                 execute_solution(executable_paths[tested], argv[i], j);
 		        tested++;
             }
 
-            // Wait for the batch to finish and check results
+            // TODO (Change 3): Setup timer to determine if child process is stuck
+            start_timer(TIMEOUT_SECS, timeout_handler);  // Implement this function (src/utils.c)
+
+            // TODO: Wait for the batch to finish and check results
             monitor_and_evaluate_solutions(tested, argv[i], i - 2);
 
+            // TODO: Cancel the timer if all child processes have finished
+            // CHECK THIS ////////  
+            int count = 0;
+            for (int i = 0; i < curr_batch_size; i++){
+                if (child_status[i] == -1) {
+                    count++;
+                }
+            }
+            if (count == curr_batch_size){
+                cancel_timer();  // Implement this function (src/utils.c)
+            }
+            ///////////////////////
+
             // TODO Unlink all output files in current batch (output/<executable>.<input>)
-            remove_output_files(results, tested, curr_batch_size, argv[i]);  // Implement this function (src/utils.c)
-            
+
+            // UNCOMMENT AFTER TESTING
+            // remove_output_files(results, tested, curr_batch_size, argv[i]);  // Implement this function (src/utils.c)
+
 
             // Adjust the remaining count after the batch has finished
             remaining -= curr_batch_size;
@@ -248,6 +307,8 @@ int main(int argc, char *argv[]) {
 
     free(results);
     free(executable_paths);
+
     free(pids);
+    
     return 0;
-}     
+}
