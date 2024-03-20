@@ -39,7 +39,7 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
         }
 
     #endif
-    
+
     pid_t pid = fork();
 
     // Child process
@@ -73,31 +73,26 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
 
 
         #elif REDIR
-            
             //TODO: Redirect STDIN to input/<input>.in file
             char name[255];
             sprintf(name, "input/%s.in", input);
-            printf("%s\n", name);
             int in = open(name, O_RDONLY);
             if(in == -1) {
-                perror(name);
+                perror("input file failed to open");
                 exit(EXIT_FAILURE);
             }
             if(dup2(in, STDIN_FILENO) == -1){ 
-                perror(EXIT_FAILURE);
+                perror("dup2 failed");
+                exit(EXIT_FAILURE);
             }
             execl(executable_path, executable_name, NULL);
-        
 
         #elif PIPE
             // TODO: Pass read end of pipe to child process
-            char buff[255];
-
-            close(fd[1]);
-            read(fd[0], buff, sizeof(buff));
-            close(fd[0]);
-            printf("%s h", buff);
-            execl(executable_path, executable_name, buff, NULL);
+            char fdstring[10];
+            sprintf(fdstring, "%d", fd[0]);
+            printf("fdstring: %s\n", fdstring);
+            execl(executable_path, executable_name, fdstring , NULL);
         #endif
 
         // If exec fails
@@ -109,9 +104,10 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
         #ifdef PIPE
             // TODO: Send input to child process via pipe
             close(fd[0]); //maybe this is an issue
-            write(fd[1], input, sizeof(input));
+            int input_value = atoi(input);
+            write(fd[1], &input_value, sizeof(int));
             close(fd[1]);
-            
+
         #endif
         pids[batch_idx] = pid;
     }
@@ -140,8 +136,8 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
         // TODO: What if waitpid is interrupted by a signal?
         if (pid == -1 && errno == EINTR){
             //CHECK THIS
-            *(results[tested - curr_batch_size + j].status) = STUCK_OR_INFINITE;
-            j++;
+            results[tested - curr_batch_size + j].status[param_idx] = STUCK_OR_INFINITE;
+            // j++;
             printf("SOR ");
             pid = waitpid(pids[j], &status, 0);
         }
@@ -160,25 +156,26 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
                 sscanf(buffer, "%d", &num);
             }
             fclose(output); 
-            if (num == 0){
-                *(results[tested - curr_batch_size + j].status) = CORRECT;
+            if (num == 1){
+                results[tested - curr_batch_size + j].status[param_idx] = CORRECT;
                 printf("%d ", pid);
                 printf("correct\n");
             }
-            else if (num == 1){
-                *(results[tested - curr_batch_size + j].status) = INCORRECT;
+            else if (num == 0){
+                results[tested - curr_batch_size + j].status[param_idx] = INCORRECT;
                 printf("%d ", pid);
                 printf("incorrect\n");
             }
         }
+
         else if(signaled && WTERMSIG(status) == SIGSEGV){
-            *(results[tested - curr_batch_size + j].status) = SEGFAULT;
+            results[tested - curr_batch_size + j].status[param_idx] = SEGFAULT;
                 printf("%d ", pid);
                 printf("segfault\n");
         }
 
         else if(signaled && WTERMSIG(status) == SIGKILL){
-            *(results[tested - curr_batch_size + j].status) = STUCK_OR_INFINITE;
+            results[tested - curr_batch_size + j].status[param_idx] = STUCK_OR_INFINITE;
                 printf("%d ", pid);
                 printf("stuck or infinite\n");
         }
@@ -187,7 +184,7 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
         //     printf("stuck or infinite 2\n");
         // }    
         // TODO: Also, update the results struct with the status of the child process
-        *(results[tested - curr_batch_size + j].status) = exit_status;
+        // *(results[tested - curr_batch_size + j].status) = exit_status;
 
         // NOTE: Make sure you are using the output/<executable>.<input> file to determine the status
         //       of the child process, NOT the exit status like in Project 1.
@@ -206,7 +203,6 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
     //     perror("setitimer");
     //     exit(EXIT_FAILURE);
     // }
-
     free(child_status);
 }
 
@@ -237,7 +233,7 @@ int main(int argc, char *argv[]) {
         // TODO: Create the input/<input>.in files and write the parameters to them
         create_input_files(argv + 2, total_params);  // Implement this function (src/utils.c)
     #endif
-    
+
     // MAIN LOOP: For each parameter, run all executables in batch size chunks
     for (int i = 2; i < argc; i++) {
         int remaining = num_executables;
@@ -248,7 +244,7 @@ int main(int argc, char *argv[]) {
             // Determine current batch size - min(remaining, batch_size)
             curr_batch_size = remaining < batch_size ? remaining : batch_size;
             pids = malloc(curr_batch_size * sizeof(pid_t));
-		
+
             // TODO: Execute the programs in batch size chunks
             for (int j = 0; j < curr_batch_size; j++) {
                 execute_solution(executable_paths[tested], argv[i], j);
@@ -260,6 +256,8 @@ int main(int argc, char *argv[]) {
 
             // TODO: Wait for the batch to finish and check results
             monitor_and_evaluate_solutions(tested, argv[i], i - 2);
+            // write_results_to_file(results, curr_batch_size, argc -2);
+
 
             // TODO: Cancel the timer if all child processes have finished
             // CHECK THIS ////////  
@@ -298,6 +296,26 @@ int main(int argc, char *argv[]) {
     // Print each score to scores.txt
     write_scores_to_file(results, num_executables, "results.txt");
 
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    for (int i = 0; i < num_executables; i++) {
+    printf("Executable Path: %s\n", results[i].exe_path);
+    printf("Parameters Tested:\n");
+    for (int j = 0; j < total_params; j++) {
+        printf("%d ", results[i].params_tested[j]);
+    }
+    printf("\n");
+    printf("Status:\n");
+    for (int j = 0; j < total_params; j++) {
+        printf("%d ", results[i].status[j]);
+    }
+    printf("\n");
+    }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     // Free the results struct and its fields
     for (int i = 0; i < num_executables; i++) {
         free(results[i].exe_path);
@@ -309,6 +327,6 @@ int main(int argc, char *argv[]) {
     free(executable_paths);
 
     free(pids);
-    
+
     return 0;
 }
