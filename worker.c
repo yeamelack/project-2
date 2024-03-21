@@ -3,6 +3,7 @@
 // Run the (executable, parameter) pairs in batches of 8 to avoid timeouts due to 
 // having too many child processes running at once
 #define PAIRS_BATCH_SIZE 8
+#define BUFF 255
 
 typedef struct {
     char *executable_path;
@@ -227,31 +228,54 @@ int main(int argc, char **argv) {
     //CHECK
     msgbuf_t msg;
 
-    if (msgrcv(msqid, &msg, sizeof(msg), 0, worker_id) == -1) {
+    if (msgrcv(msqid, &msg, sizeof(msg), worker_id, 0) == -1) {
         perror("msgrcv");
         exit(EXIT_FAILURE);
     }
-
-    printf("%d\n", msg.mtext);
+    
+    printf("recieved msg %s\n", msg.mtext);
 
     // TODO: Parse message and set up pairs_t array
-    int pairs_to_test = msg.mtext;
-
+    
+    int pairs_to_test = atoi(msg.mtext);
+    
     fprintf("%d", pairs_to_test);
+    pairs_t *pairs;
     pairs = malloc(pairs_to_test * sizeof(pairs_t));
     for (int i = 0; i < pairs_to_test; i++) {
-        pairs[i].executable_path = 0; //executable_paths[i]; NEED TO GET EXECUTABLES
+        pairs[i].executable_path = malloc(sizeof(BUFF)); //executable_paths[i]; NEED TO GET EXECUTABLES
         pairs[i].parameter = malloc((pairs_to_test) * sizeof(int));
         pairs[i].status = malloc((pairs_to_test) * sizeof(int));
     }
 
     // TODO: Receive (executable, parameter) pairs from autograder and store them in pairs_t array.
     //       Messages will have the format ("%s %d", executable_path, parameter). (mtype = worker_id)
+
+    for(int i = 0; i < pairs_to_test; i++) {
+        
+        if (msgrcv(msqid, &msg, sizeof(msg), worker_id, 0) == -1) {
+            perror("msgrcv");
+            exit(EXIT_FAILURE);
+        }
+        printf("recieved msg %s\n", msg.mtext);
+        strncpy(pairs[i].executable_path, msg.mtext, sizeof(msg));
+        // printf("%s\n", pairs[i].executable_path);
+        // pairs[i].executable_path = (char *)malloc(strlen(msg.mtext) + 1);
+        // pairs[i].executable_path = msg.mtext;
+        // pairs[i].parameter = pairs_to_test;
+    }
+
+    for(int i = 0; i < pairs_to_test; i++){
+        printf("%s\n", pairs[i].executable_path);
+        printf("%d\n", pairs[i].parameter);
+
+    }
    
     // if (msgrcv(msqid, &msg, sizeof(msg), 1, 0) == -1) {
     //     perror("msgrcv");
     //     exit(EXIT_FAILURE);
     // }
+
     // TODO: Send ACK message to mq_autograder after all pairs received (mtype = BROADCAST_MTYPE)
 
     // TODO: Wait for SYNACK from autograder to start testing (mtype = BROADCAST_MTYPE).

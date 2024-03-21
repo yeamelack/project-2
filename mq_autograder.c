@@ -30,6 +30,9 @@ void launch_worker(int msqid, int pairs_per_worker, int worker_id) {
         snprintf(worker_id_str, sizeof(worker_id_str), "%d", worker_id);
         snprintf(pairs_per_worker_str, sizeof(pairs_per_worker_str), "%d", pairs_per_worker);
 
+        // printf("msqid %s\n", msqid_str);
+        // printf("worker id %s\n", worker_id_str);
+        // printf("pairs per worker  %s\n", pairs_per_worker_str);
         execl("./worker",pairs_per_worker_str, msqid_str, worker_id_str, NULL);
         
         perror("Failed to spawn worker");
@@ -43,9 +46,13 @@ void launch_worker(int msqid, int pairs_per_worker, int worker_id) {
         msgbuf_t msg;
         char pairs_str[10];
         snprintf(pairs_str, sizeof(pairs_str), "%d", pairs_per_worker);
+        // printf("pairs %s\n", pairs_str);
+
+
         msg.mtype = worker_id; // Use worker_id as the message type for identification
-        strncpy(msg.mtext, pairs_str, sizeof(msg.mtext) - 1); 
-        msg.mtext[sizeof(msg.mtext) - 1] = '\0';
+        strncpy(msg.mtext, pairs_str, sizeof(pairs_str)); 
+
+        printf("msg %s\n", msg.mtext);
 
         // Send the message
         if (msgsnd(msqid, &msg, sizeof(msg), worker_id) == -1) {
@@ -180,6 +187,9 @@ int main(int argc, char *argv[]) {
     }
 
     num_workers = get_batch_size();
+
+    printf("num of workers %d\n", num_workers);
+
     // Check if some workers won't be used -> don't spawn them
     if (num_workers > num_executables * total_params) {
         num_workers = num_executables * total_params;
@@ -190,16 +200,18 @@ int main(int argc, char *argv[]) {
     key_t key = IPC_PRIVATE; // Creates shared space in memory 
 
     // TODO: Create a message queue --> Done
-
     int msqid = msgget(key, IPC_CREAT | 0666);
     
 
     int num_pairs_to_test = num_executables * total_params;
+    // printf("num pairs to test %d\n", num_pairs_to_test);
     
     // Spawn workers and send them the total number of (executable, parameter) pairs they will test 
     for (int i = 0; i < num_workers; i++) {
         int leftover = num_pairs_to_test % num_workers - i > 0 ? 1 : 0;
         int pairs_per_worker = num_pairs_to_test / num_workers + leftover;
+
+        // printf("pairs %d\n", pairs_per_worker);
 
         // TODO: Spawn worker and send it the number of pairs it will test via message queue --> Done
         launch_worker(msqid, pairs_per_worker, i + 1);
@@ -214,8 +226,13 @@ int main(int argc, char *argv[]) {
             
             // TODO: Send (executable, parameter) pair to worker via message queue (mtype = worker_id) --> DOUBLE CHECK WITH TA
             char buf2[255];
-            // execl(executable_paths, argv[j], NULL); // --> maybe we are wrong DOUBLE CHECK WITH TA
-            msgsnd(worker_id, &msg, sizeof(msg), IPC_NOWAIT); // --> maybe we are wrong DOUBLE CHECK WITH TA
+            strncpy(buf2, executable_paths[j], sizeof(buf2));
+            strcat(buf2, " ");
+            strcat(buf2, argv[i + 2]);
+            strncpy(msg.mtext, buf2, sizeof(buf2));
+            // printf("msg %s\n", msg.mtext);
+
+            msgsnd(msqid, &msg, sizeof(msg), worker_id);
             sent++;
         }
     }
