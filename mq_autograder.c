@@ -50,12 +50,13 @@ void launch_worker(int msqid, int pairs_per_worker, int worker_id) {
 
 
         msg.mtype = worker_id; // Use worker_id as the message type for identification
-        strncpy(msg.mtext, pairs_str, sizeof(pairs_str)); 
+        strncpy(msg.mtext, pairs_str, sizeof(msg.mtext)); 
 
         printf("msg %s\n", msg.mtext);
 
         // Send the message
-        if (msgsnd(msqid, &msg, sizeof(msg), worker_id) == -1) {
+
+        if (msgsnd(msqid, &msg, sizeof(msg), 0) == -1) {
             perror("msgsnd failed");
         }
 
@@ -72,53 +73,35 @@ void launch_worker(int msqid, int pairs_per_worker, int worker_id) {
 
 // TODO: Receive ACK from all workers using message queue (mtype = BROADCAST_MTYPE)
 void receive_ack_from_workers(int msqid, int num_workers) {
-    struct Message {
-    long mtype; 
-    char data[100]; 
-    };
-    struct Message buf;
-    int received_acks = 0;
-
-    // Loop until acknowledgments are received from all workers
-    while (received_acks < num_workers) {
-        // Receive a message from the message queue
-        if (msgrcv(msqid, &buf, sizeof(buf), BROADCAST_MTYPE, 0) == -1) {
-            perror("msgrcv");
-            exit(EXIT_FAILURE);
+    msgbuf_t msg;
+    int count = 0; 
+    while (count != num_workers){
+        msgrcv(msqid, &msg, sizeof(msg), BROADCAST_MTYPE, 0);
+        if (strcmp(msg.mtext, "ACK") == 0){
+            count++;
         }
 
-        // Check if the received message is an acknowledgment
-        if (buf.mtype == BROADCAST_MTYPE) {
-            // Process the acknowledgment
-            printf("Received ACK from worker %ld\n", buf.mtype);
-            received_acks++;
-        }
     }
-
+    return;
 }
 
 
 // TODO: Send SYNACK to all workers using message queue (mtype = BROADCAST_MTYPE)
 void send_synack_to_workers(int msqid, int num_workers) {
-    struct Message {
-    long mtype; 
-    char data[100]; 
-    };
-    struct Message buf;
-    int worker_id;
-
+    msgbuf_t msg;
     // Prepare the SYNACK message
-    buf.mtype = BROADCAST_MTYPE;
+    msg.mtype = BROADCAST_MTYPE;
+    strcpy(msg.mtext, "SYNACK");
     // Add other fields or data to the message if needed
 
     // Send SYNACK to each worker
-    for (worker_id = 1; worker_id <= num_workers; worker_id++) {
+    for (int i = 0; i < num_workers; i++) {
         // Send the message
-        if (msgsnd(msqid, &buf, sizeof(buf), 0) == -1) {
+        if (msgsnd(msqid, &msg, sizeof(msg), 0) == -1) {
             perror("msgsnd");
             exit(EXIT_FAILURE);
         }
-        printf("SYNACK sent to worker %d\n", worker_id);
+        //msgsnd(msqid, &msg, sizeof(msg), 0);
     }
 }
 
@@ -166,7 +149,7 @@ void wait_for_workers(int msqid, int pairs_to_test, char **argv_params) {
                     exit(EXIT_FAILURE);
                 }
 
-                if (scanf(msg.mtext, "%s %d %d", executable_path, parameter, status) != 3){
+                if (sscanf(msg.mtext, "%s %d %d", executable_path, &parameter, &status) != 3){
                     perror("Received message format is incorrect");
                     exit(EXIT_FAILURE);
                 }
@@ -236,6 +219,7 @@ int main(int argc, char *argv[]) {
         int pairs_per_worker = num_pairs_to_test / num_workers + leftover;
 
         // printf("pairs %d\n", pairs_per_worker);
+       
 
         // TODO: Spawn worker and send it the number of pairs it will test via message queue --> Done
         launch_worker(msqid, pairs_per_worker, i + 1);
@@ -253,10 +237,11 @@ int main(int argc, char *argv[]) {
             strncpy(buf2, executable_paths[j], sizeof(buf2));
             strcat(buf2, " ");
             strcat(buf2, argv[i + 2]);
-            strncpy(msg.mtext, buf2, sizeof(buf2));
+            strncpy(msg.mtext, buf2, sizeof(msg.mtext));
             // printf("msg %s\n", msg.mtext);
-
-            msgsnd(msqid, &msg, sizeof(msg), worker_id);
+         
+            msg.mtype = worker_id;
+            msgsnd(msqid, &msg, sizeof(msg), 0);
             sent++;
         }
     }
@@ -271,6 +256,7 @@ int main(int argc, char *argv[]) {
     wait_for_workers(msqid, num_pairs_to_test, argv + 2);
 
     // TODO: Remove ALL output files (output/<executable>.<input>)
+    
     //check ------------------
     remove_output_files(results, msqid, num_workers, total_params); // --> DOUBLE CHECK THIS WITH TA
 
