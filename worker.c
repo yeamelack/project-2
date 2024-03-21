@@ -23,14 +23,11 @@ long worker_id;        // Used for sending/receiving messages from the message q
 
 // TODO: Timeout handler for alarm signal - should be the same as the one in autograder.c
 void timeout_handler(int signum) {
-    if(child_status == NULL)
-    {
+    if(child_status == NULL){
         return;
     }
-    for(int i = 0 ; i < curr_batch_size; i++)
-    {
-        if(child_status[i] == 1)
-        {
+    for(int i = 0 ; i < curr_batch_size; i++){
+        if(child_status[i] == 1){
             kill(pids[i], SIGKILL);
         }
     }
@@ -228,21 +225,19 @@ int main(int argc, char **argv) {
     // pairs that the worker will test (should just be an integer in the message body). (mtype = worker_id)
 
     //CHECK
-    // receive_ack_from_workers(msqid, worker_id);
-    struct Message {
-    long mtype; 
-    char data[100]; 
-    };
+    msgbuf_t msg;
 
-    struct Message msg;
-    if (msgrcv(msqid, &msg, sizeof(msg), 0, 0) == -1) {
+    if (msgrcv(msqid, &msg, sizeof(msg), 0, worker_id) == -1) {
         perror("msgrcv");
         exit(EXIT_FAILURE);
     }
 
+    printf("%d\n", msg.mtext);
 
     // TODO: Parse message and set up pairs_t array
-    int pairs_to_test = atoi(msg.data);
+    int pairs_to_test = msg.mtext;
+
+    fprintf("%d", pairs_to_test);
     pairs = malloc(pairs_to_test * sizeof(pairs_t));
     for (int i = 0; i < pairs_to_test; i++) {
         pairs[i].executable_path = 0; //executable_paths[i]; NEED TO GET EXECUTABLES
@@ -253,10 +248,10 @@ int main(int argc, char **argv) {
     // TODO: Receive (executable, parameter) pairs from autograder and store them in pairs_t array.
     //       Messages will have the format ("%s %d", executable_path, parameter). (mtype = worker_id)
    
-    if (msgrcv(msqid, &msg, sizeof(msg), 1, 0) == -1) {
-        perror("msgrcv");
-        exit(EXIT_FAILURE);
-    }
+    // if (msgrcv(msqid, &msg, sizeof(msg), 1, 0) == -1) {
+    //     perror("msgrcv");
+    //     exit(EXIT_FAILURE);
+    // }
     // TODO: Send ACK message to mq_autograder after all pairs received (mtype = BROADCAST_MTYPE)
 
     // TODO: Wait for SYNACK from autograder to start testing (mtype = BROADCAST_MTYPE).

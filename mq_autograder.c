@@ -20,43 +20,35 @@ void launch_worker(int msqid, int pairs_per_worker, int worker_id) {
         // TODO: exec() the worker program and pass it the message queue id and worker id.
         //       Use ./worker as the path to the worker program.
 
-        //CHECK
-
-        char msqid_str[10]; // Buffer to hold msqid as string
-        char worker_id_str[10]; // Buffer to hold worker_id as string
+        //CHECK MIGHT BE GOOD
+        char msqid_str[10]; 
+        char worker_id_str[10]; 
+        char pairs_per_worker_str[10];
 
         // Convert msqid and worker_id to strings
         snprintf(msqid_str, sizeof(msqid_str), "%d", msqid);
         snprintf(worker_id_str, sizeof(worker_id_str), "%d", worker_id);
+        snprintf(pairs_per_worker_str, sizeof(pairs_per_worker_str), "%d", pairs_per_worker);
 
-        // Execute the worker program with msqid and worker_id as arguments
-        execl("./worker", msqid_str, worker_id_str, NULL);
-        // execl("./worker", msqid, worker_id, NULL);
-        // execl("./worker", worker_id, NULL);
-
+        execl("./worker",pairs_per_worker_str, msqid_str, worker_id_str, NULL);
+        
         perror("Failed to spawn worker");
         exit(1);
     } 
     // Parent process
     else if (pid > 0) {
         // TODO: Send the total number of pairs to worker via message queue (mtype = worker_id)
-        // char buffer[255];
-        // msgsnd(worker_id, buffer, sizeof(buffer), IPC_NOWAIT); // May need to recheck prolly did it wrong
-
-        //CHECK
-        // msgsnd(worker_id, pairs_per_worker, sizeof(pairs_per_worker), IPC_NOWAIT); // May need to recheck prolly did it wrong
-        struct my_msg  {
-        long type;
-        char text[100];
-        } msg;
-
+       
+       //CHECK MIGHT BE GOOD
+        msgbuf_t msg;
         char pairs_str[10];
         snprintf(pairs_str, sizeof(pairs_str), "%d", pairs_per_worker);
-        msg.type = worker_id; // Use worker_id as the message type for identification
-        strncpy(msg.text, pairs_str, sizeof(msg.text) - 1); 
-        msg.text[sizeof(msg.text) - 1] = '\0';
+        msg.mtype = worker_id; // Use worker_id as the message type for identification
+        strncpy(msg.mtext, pairs_str, sizeof(msg.mtext) - 1); 
+        msg.mtext[sizeof(msg.mtext) - 1] = '\0';
+
         // Send the message
-        if (msgsnd(msqid, &msg, sizeof(msg), IPC_NOWAIT) == -1) {
+        if (msgsnd(msqid, &msg, sizeof(msg), worker_id) == -1) {
             perror("msgsnd failed");
         }
 
@@ -198,10 +190,8 @@ int main(int argc, char *argv[]) {
     key_t key = IPC_PRIVATE; // Creates shared space in memory 
 
     // TODO: Create a message queue --> Done
-    int msqid = msgget(key, IPC_CREAT | 0666);
-    // key_t keyID = ftok(argv[1], 3); // assuming argv[1] holds our path name we are then assiging a unique identfier with it which is 3 -- may need to double check
-    int msgid = msgget(key, IPC_CREAT); // Creating the message queue here if it does not exist otherwise it uses it's own 
 
+    int msqid = msgget(key, IPC_CREAT | 0666);
     
 
     int num_pairs_to_test = num_executables * total_params;
@@ -224,7 +214,7 @@ int main(int argc, char *argv[]) {
             
             // TODO: Send (executable, parameter) pair to worker via message queue (mtype = worker_id) --> DOUBLE CHECK WITH TA
             char buf2[255];
-            execl(executable_paths, argv[j], NULL); // --> maybe we are wrong DOUBLE CHECK WITH TA
+            // execl(executable_paths, argv[j], NULL); // --> maybe we are wrong DOUBLE CHECK WITH TA
             msgsnd(worker_id, &msg, sizeof(msg), IPC_NOWAIT); // --> maybe we are wrong DOUBLE CHECK WITH TA
             sent++;
         }
