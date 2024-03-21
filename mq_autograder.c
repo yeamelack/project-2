@@ -157,8 +157,32 @@ void wait_for_workers(int msqid, int pairs_to_test, char **argv_params) {
             //       If message is "DONE", set worker_done[i] to 1 and break out of loop.
             //       Messages will have the format ("%s %d %d", executable_path, parameter, status)
             //       so consider using sscanf() to parse the message.
+            msgbuf_t msg;
+            int parameter, status;
+            char executable_path[255];
             while (1) {
-                
+                if (msgrcv(msqid, &msg, sizeof(msg.mtext), BROADCAST_MTYPE, 0) < 0) {
+                    perror("msgrcv failed");
+                    exit(EXIT_FAILURE);
+                }
+
+                if (scanf(msg.mtext, "%s %d %d", executable_path, parameter, status) != 3){
+                    perror("Received message format is incorrect");
+                    exit(EXIT_FAILURE);
+                }
+
+                if (strcmp(executable_path, "DONE") == 0) { //check this
+                    worker_done[i] = 1;
+                    break;
+                }
+
+                for (int j = 0; j < num_executables; j++) {
+                    int paramIndex = parameter - 1;
+                    if (paramIndex >= 0 && paramIndex < total_params) {
+                        results[j].params_tested[paramIndex] = parameter;
+                        results[j].status[paramIndex] = status;
+                    }
+                }
             }
         }
     }
