@@ -79,13 +79,14 @@ void execute_solution(char *executable_path, int param, int batch_idx) {
 // Wait for the batch to finish and check results
 void monitor_and_evaluate_solutions(int finished) {
     // Keep track of finished processes for alarm handler
-    child_status = malloc(curr_batch_size * sizeof(int));
-    for (int j = 0; j < curr_batch_size; j++) {
+    //THIS CAUSES MALLOC ERROR CHECK
+    child_status = malloc(finished * sizeof(int));
+    for (int j = 0; j < finished; j++) {
         child_status[j] = 1;
     }
 
     // MAIN EVALUATION LOOP: Wait until each process has finished or timed out
-    for (int j = 0; j < curr_batch_size; j++) {
+    for (int j = 0; j < finished; j++) {
         char *current_exe_path = pairs[finished + j].executable_path;
         int current_param = pairs[finished + j].parameter;
 
@@ -196,15 +197,12 @@ void send_results(int msqid, long mtype, int finished) {
 
 // Send DONE message to autograder to indicate that the worker has finished testing
 void send_done_msg(int msqid, long mtype) {
-    struct msg_buffer {
-    long type;
-    char text[100];
-    } message;
+    
 
-    struct msg_buffer msg_buf;
-    msg_buf.type = mtype;
+    msgbuf_t msg_buf;
+    msg_buf.mtype = mtype;
 
-    if (msgsnd(msqid, &msg_buf, strlen(msg_buf.text) + 1, 0) == -1) {
+    if (msgsnd(msqid, &msg_buf, strlen(msg_buf.mtext) + 1, 0) == -1) {
         perror("msgsnd");
         exit(EXIT_FAILURE);
     }
@@ -242,12 +240,12 @@ int main(int argc, char **argv) {
     int pairs_to_test = atoi(msg.mtext);
     
     // fprintf("%d", pairs_to_test);
-    pairs_t *pairs;
+    //pairs_t *pairs;
     pairs = malloc(pairs_to_test * sizeof(pairs_t));
     for (int i = 0; i < pairs_to_test; i++) {
-        pairs[i].executable_path = malloc(sizeof(BUFF)); //executable_paths[i]; NEED TO GET EXECUTABLES
-        pairs[i].parameter = malloc((pairs_to_test) * sizeof(int));
-        pairs[i].status = malloc((pairs_to_test) * sizeof(int));
+        pairs[i].executable_path = malloc(100); //executable_paths[i]; NEED TO GET EXECUTABLES
+        // pairs[i].parameter = malloc((pairs_to_test) * sizeof(int));
+        // pairs[i].status = malloc((pairs_to_test) * sizeof(int));
     }
 
     // TODO: Receive (executable, parameter) pairs from autograder and store them in pairs_t array.
@@ -260,7 +258,8 @@ int main(int argc, char **argv) {
             exit(EXIT_FAILURE);
         }
         // printf("recieved msg 2nd chk %s\n", msg.mtext);
-        strncpy(pairs[i].executable_path, msg.mtext, sizeof(msg));
+        // CHECK THIS FOR MALLOC ERROR 
+        strncpy(pairs[i].executable_path, msg.mtext, sizeof(pairs[i].executable_path));
         printf("executable %s\n", pairs[i].executable_path);
        
     }
@@ -320,5 +319,7 @@ int main(int argc, char **argv) {
     }
     free(pairs);
 
-    free(pids);
+
+    // THIS WAS GIVEN BUT IS GIVING ERRORS 
+    // free(pids);
 }
