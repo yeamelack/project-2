@@ -154,43 +154,6 @@ void monitor_and_evaluate_solutions(int finished) {
 void send_results(int msqid, long mtype, int finished) {
     // Format of message should be ("%s %d %d", executable_path, parameter, status)
 
-    // struct msgbuf {
-    // long mtype;               // Message type, must be first.
-    // char mtext[200];          // Message text.
-    // };
-
-    // struct msgbuf msg;
-    // msg.mtype = mtype;
-    
-    // // Assuming executable_path is a string containing the path to the executable,
-    // // parameter is an integer, and finished is the status (also an integer).
-    // snprintf(msg.mtext, sizeof(msg.mtext), "%s %d %d", executable_path, parameter, finished);
-    
-    // // Send the message
-    // if (msgsnd(msqid, &msg, strlen(msg.mtext) + 1, 0) == -1) {
-    //     perror("msgsnd error");
-    //     exit(1);
-    // }
-
-
-
-    // char message_data[100];
-    // char executable_path[50] = "/path/to/executable"; // Example path, replace with actual value
-    // int parameter = 123; // Example parameter, replace with actual value
-    // int status = 0; // Example status, replace with actual value
-
-    // // Format the message data
-    // sprintf(message_data, "%s %d %d", executable_path, parameter, status);
-
-    // // Create and send message
-    // struct ResultMessage result_msg;
-    // result_msg.mtype = mtype;
-    // strcpy(result_msg.data, message_data);
-
-    // if (msgsnd(msqid, &result_msg, sizeof(result_msg.data), 0) == -1) {
-    //     perror("msgsnd");
-    //     exit(EXIT_FAILURE);
-    // }
 }
 
 
@@ -221,7 +184,7 @@ int main(int argc, char **argv) {
 
     //CHECK
     msgbuf_t msg;
-    if (msgrcv(msqid, &msg, sizeof(msg), worker_id, 0) == -1) {
+    if (msgrcv(msqid, &msg, sizeof(msg.mtext), worker_id, 0) == -1) {
         perror("msgrcv");
         exit(EXIT_FAILURE);
     }
@@ -234,7 +197,7 @@ int main(int argc, char **argv) {
     //pairs_t *pairs;
     pairs = malloc(pairs_to_test * sizeof(pairs_t));
     for (int i = 0; i < pairs_to_test; i++) {
-        pairs[i].executable_path = malloc(255); //executable_paths[i]; NEED TO GET EXECUTABLES
+        pairs[i].executable_path = malloc(100); //executable_paths[i]; NEED TO GET EXECUTABLES
         // pairs[i].parameter = malloc((pairs_to_test) * sizeof(int));
         // pairs[i].status = malloc((pairs_to_test) * sizeof(int));
     }
@@ -244,35 +207,48 @@ int main(int argc, char **argv) {
    
     for(int i = 0; i < pairs_to_test; i++) {
         // printf("pairs to test %d, i is %d\n", pairs_to_test, i);
-        if (msgrcv(msqid, &msg, sizeof(msg), worker_id, 0) == -1) {
+        if (msgrcv(msqid, &msg, sizeof(msg.mtext), worker_id, 0) == -1) {
             perror("msgrcv");
             exit(EXIT_FAILURE);
         }
         // printf("recieved msg 2nd chk %s\n", msg.mtext);
         // CHECK THIS FOR MALLOC ERROR 
-        strncpy(pairs[i].executable_path, msg.mtext, sizeof(msg.mtext));
+        sscanf(msg.mtext, "%s %d",pairs[i].executable_path, &pairs[i].parameter);
+       //strncpy(pairs[i].executable_path, msg.mtext, sizeof(msg.mtext));
         printf("recieved: %s\n", pairs[i].executable_path);
     }
-
+    printf("done receiving executables\n");
     // TODO: Send ACK message to mq_autograder after all pairs received (mtype = BROADCAST_MTYPE)
     msgbuf_t ack;
     ack.mtype = BROADCAST_MTYPE;
     strcpy(ack.mtext, "ACK");
-    printf("sent ACK\n");
-    msgsnd(msqid, &ack, sizeof(ack), BROADCAST_MTYPE);
+    printf("%s\n", ack.mtext);
+    if (msgsnd(msqid, &ack, sizeof(ack.mtext), 0) == -1){
+        perror("msgsnd");
+        exit(EXIT_FAILURE);
+    }
 
     
     // TODO: Wait for SYNACK from autograder to start testing (mtype = BROADCAST_MTYPE).
     //       Be careful to account for the possibility of receiving ACK messages just sent.
+    for (int i = 0; i < pairs_to_test; i++){
         msgbuf_t syn;
-        syn.mtype = BROADCAST_MTYPE;
-        for (int i = 0; i < pairs_to_test; i++){
-            msgrcv(msqid, &syn, sizeof(syn), BROADCAST_MTYPE, 0);
-            if (strcmp(syn.mtext, "SYNACK") == 0){
-                continue;
-            }
-            
+        // syn.mtype = BROADCAST_MTYPE;
+
+
+        if (msgrcv(msqid, &syn, sizeof(syn.mtext), BROADCAST_MTYPE, 0) == -1){
+            perror("synack msgrcv\n");
         }
+        // printf("%s --> receive synack from workers\n", syn.mtext);
+        if (strcmp(syn.mtext, "SYNACK") == 0){
+            printf("recieved SYNACK");
+            continue;
+        }
+        else {
+            printf("error");
+        }
+        
+    }
 
     // Run the pairs in batches of 8 and send results back to autograder
     for (int i = 0; i < pairs_to_test; i+= PAIRS_BATCH_SIZE) {

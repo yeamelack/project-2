@@ -33,7 +33,7 @@ void launch_worker(int msqid, int pairs_per_worker, int worker_id) {
         // printf("msqid %s\n", msqid_str);
         // printf("worker id %s\n", worker_id_str);
         // printf("pairs per worker  %s\n", pairs_per_worker_str);
-        execl("./worker",pairs_per_worker_str, msqid_str, worker_id_str, NULL);
+        execl("./worker", "worker", msqid_str, worker_id_str, NULL);//error check
         
         perror("Failed to spawn worker");
         exit(1);
@@ -44,13 +44,14 @@ void launch_worker(int msqid, int pairs_per_worker, int worker_id) {
        
        //CHECK MIGHT BE GOOD
         msgbuf_t msg;
-        char pairs_str[10];
-        snprintf(pairs_str, sizeof(pairs_str), "%d", pairs_per_worker);
+        // char pairs_str[10];
+        // snprintf(pairs_str, sizeof(pairs_str), "%d", pairs_per_worker);
         msg.mtype = worker_id; // Use worker_id as the message type for identification
-        strncpy(msg.mtext, pairs_str, sizeof(msg.mtext)); 
+        //strncpy(msg.mtext, "pairs_str", sizeof(msg.mtext)); 
         // Send the message
+        sprintf(msg.mtext, "%d", pairs_per_worker);
 
-        if (msgsnd(msqid, &msg, sizeof(msg), 0) == -1) {
+        if (msgsnd(msqid, &msg, sizeof(msg.mtext), 0) == -1) {
             perror("msgsnd failed");
         }
 
@@ -67,13 +68,22 @@ void launch_worker(int msqid, int pairs_per_worker, int worker_id) {
 
 // TODO: Receive ACK from all workers using message queue (mtype = BROADCAST_MTYPE)
 void receive_ack_from_workers(int msqid, int num_workers) {
-    msgbuf_t msg;
-    int count = 0; 
+    printf("before  --> receive ack from workers\n");
     for (int i = 0; i < num_workers; i++){
-        msgrcv(msqid, &msg, sizeof(msg), BROADCAST_MTYPE, 0);
+        msgbuf_t msg;
+        //int count = 0; 
+        if (msgrcv(msqid, &msg, sizeof(msg.mtext), BROADCAST_MTYPE, 0) == -1){
+            perror("msgrcv\n");
+            exit(EXIT_FAILURE);
+        }
+        printf("%s --> receive ack from workers\n", msg.mtext);
         if (strcmp(msg.mtext, "ACK") == 0){
-            printf("recieved ACK");
+            // printf("recieved ACK\n");
             continue;
+        }
+        else
+        {
+            printf("ERROR\n");
         }
     }
 }
@@ -81,16 +91,17 @@ void receive_ack_from_workers(int msqid, int num_workers) {
 
 // TODO: Send SYNACK to all workers using message queue (mtype = BROADCAST_MTYPE)
 void send_synack_to_workers(int msqid, int num_workers) {
-    msgbuf_t msg;
-    // Prepare the SYNACK message
-    msg.mtype = BROADCAST_MTYPE;
-    strcpy(msg.mtext, "SYNACK");
+    
     // Add other fields or data to the message if needed
 
     // Send SYNACK to each worker
     for (int i = 0; i < num_workers; i++) {
+        msgbuf_t msg;
+        // Prepare the SYNACK message
+        msg.mtype = BROADCAST_MTYPE;
+        strcpy(msg.mtext, "SYNACK");
         // Send the message
-        if (msgsnd(msqid, &msg, sizeof(msg), BROADCAST_MTYPE) == -1) {
+        if (msgsnd(msqid, &msg, sizeof(msg.mtext), 0) == -1) {
             perror("msgsnd");
             exit(EXIT_FAILURE);
         }
@@ -231,7 +242,7 @@ int main(int argc, char *argv[]) {
             printf("msg sent %s\n", msg.mtext);
          
             msg.mtype = worker_id;
-            msgsnd(msqid, &msg, sizeof(msg), worker_id);
+            msgsnd(msqid, &msg, sizeof(msg.mtext), 0);
             sent++;
         }
     }
