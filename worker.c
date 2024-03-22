@@ -45,14 +45,15 @@ void execute_solution(char *executable_path, int param, int batch_idx) {
 
         // TODO: Redirect STDOUT to output/<executable>.<input> file
         char buffer[255];
-        sprintf(buffer, "output/%s.%s", executable_name, param);
+        sprintf(buffer, "output/%s.%d", executable_name, param);
         printf("buffer is %s\n", buffer);
         FILE *output = fopen(buffer, "w");
         if(output == -1){
             perror("opening file failed");
             exit(EXIT_FAILURE);
         }
-        if(dup2(output, 1) == -1){
+        int fd = fileno(output);
+        if(dup2(fd, 1) == -1){
             perror("dup2 failed");
             exit(EXIT_FAILURE);
         }
@@ -60,6 +61,10 @@ void execute_solution(char *executable_path, int param, int batch_idx) {
 
         // TODO: Input to child program can be handled as in the EXEC case (see template.c)
         pids[batch_idx] = param;
+        printf("%s, %s, %d\n", executable_path, buffer, param);
+        
+        execl(executable_path, buffer, param, NULL);
+
         
         perror("Failed to execute program in worker");
         exit(1);
@@ -234,8 +239,7 @@ int main(int argc, char **argv) {
     // TODO: Wait for SYNACK from autograder to start testing (mtype = BROADCAST_MTYPE).
     //       Be careful to account for the possibility of receiving ACK messages just sent.
     
-    while(1)
-    {
+    while(1){
         msgbuf_t syn;
         syn.mtype = BROADCAST_MTYPE;
         if (msgrcv(msqid, &syn, sizeof(syn.mtext), BROADCAST_MTYPE, 0) == -1){
@@ -246,8 +250,7 @@ int main(int argc, char **argv) {
             break;
         }
         else{
-            if(msgsnd(msqid, &syn, sizeof(syn.mtext), 0) == -1)
-            {
+            if(msgsnd(msqid, &syn, sizeof(syn.mtext), 0) == -1){
                 exit(1);
             }
 
