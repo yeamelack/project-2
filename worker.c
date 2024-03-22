@@ -153,6 +153,18 @@ void monitor_and_evaluate_solutions(int finished) {
 // VERY WRONG
 void send_results(int msqid, long mtype, int finished) {
     // Format of message should be ("%s %d %d", executable_path, parameter, status)
+    int parameter = pairs[finished].parameter;
+    int status = pairs[finished].status;
+    char *executable_path = pairs[finished].executable_path;
+
+    msgbuf_t send_res;
+    send_res.mtype = mtype;
+
+    sprintf(send_res.mtext, "%s %d %d", executable_path, parameter, status);
+    if (msgsnd(msqid, &send_res, strlen(send_res.mtext) + 1, mtype) == -1){ //check this(mtype or 0 or BROADCAST_MTYPE)
+        perror("msgsnd");
+        exit(EXIT_FAILURE);
+    }
 
 }
 
