@@ -45,7 +45,8 @@ void execute_solution(char *executable_path, int param, int batch_idx) {
 
         // TODO: Redirect STDOUT to output/<executable>.<input> file
         char buffer[255];
-        sprintf(buffer, "output/%s", executable_name);
+        sprintf(buffer, "output/%s.%s", executable_name, param);
+        printf("buffer is %s\n", buffer);
         FILE *output = fopen(buffer, "w");
         if(output == -1){
             perror("opening file failed");
@@ -153,18 +154,6 @@ void monitor_and_evaluate_solutions(int finished) {
 // VERY WRONG
 void send_results(int msqid, long mtype, int finished) {
     // Format of message should be ("%s %d %d", executable_path, parameter, status)
-    int parameter = pairs[finished].parameter;
-    int status = pairs[finished].status;
-    char *executable_path = pairs[finished].executable_path;
-
-    msgbuf_t send_res;
-    send_res.mtype = mtype;
-
-    sprintf(send_res.mtext, "%s %d %d", executable_path, parameter, status);
-    if (msgsnd(msqid, &send_res, strlen(send_res.mtext) + 1, mtype) == -1){ //check this(mtype or 0 or BROADCAST_MTYPE)
-        perror("msgsnd");
-        exit(EXIT_FAILURE);
-    }
 
 }
 
@@ -227,39 +216,42 @@ int main(int argc, char **argv) {
         // CHECK THIS FOR MALLOC ERROR 
         sscanf(msg.mtext, "%s %d",pairs[i].executable_path, &pairs[i].parameter);
        //strncpy(pairs[i].executable_path, msg.mtext, sizeof(msg.mtext));
-        printf("recieved: %s\n", pairs[i].executable_path);
+        // printf("recieved: %s\n", pairs[i].executable_path);
     }
-    printf("done receiving executables\n");
+    // printf("done receiving executables\n");
     // TODO: Send ACK message to mq_autograder after all pairs received (mtype = BROADCAST_MTYPE)
     msgbuf_t ack;
     ack.mtype = BROADCAST_MTYPE;
     strcpy(ack.mtext, "ACK");
-    printf("%s\n", ack.mtext);
     if (msgsnd(msqid, &ack, sizeof(ack.mtext), 0) == -1){
         perror("msgsnd");
         exit(EXIT_FAILURE);
     }
+    printf("%s got sent \n", ack.mtext);
+
 
     
     // TODO: Wait for SYNACK from autograder to start testing (mtype = BROADCAST_MTYPE).
     //       Be careful to account for the possibility of receiving ACK messages just sent.
-    for (int i = 0; i < pairs_to_test; i++){
+    
+    while(1)
+    {
         msgbuf_t syn;
-        // syn.mtype = BROADCAST_MTYPE;
-
-
+        syn.mtype = BROADCAST_MTYPE;
         if (msgrcv(msqid, &syn, sizeof(syn.mtext), BROADCAST_MTYPE, 0) == -1){
             perror("synack msgrcv\n");
         }
-        // printf("%s --> receive synack from workers\n", syn.mtext);
         if (strcmp(syn.mtext, "SYNACK") == 0){
-            printf("recieved SYNACK");
-            continue;
+            printf("recieved SYNACK\n");
+            break;
         }
-        else {
-            printf("error");
+        else{
+            if(msgsnd(msqid, &syn, sizeof(syn.mtext), 0) == -1)
+            {
+                exit(1);
+            }
+
         }
-        
     }
 
     // Run the pairs in batches of 8 and send results back to autograder
