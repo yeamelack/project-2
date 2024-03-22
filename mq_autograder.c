@@ -46,14 +46,8 @@ void launch_worker(int msqid, int pairs_per_worker, int worker_id) {
         msgbuf_t msg;
         char pairs_str[10];
         snprintf(pairs_str, sizeof(pairs_str), "%d", pairs_per_worker);
-        // printf("pairs %s\n", pairs_str);
-
-
         msg.mtype = worker_id; // Use worker_id as the message type for identification
         strncpy(msg.mtext, pairs_str, sizeof(msg.mtext)); 
-
-        printf("msg %s\n", msg.mtext);
-
         // Send the message
 
         if (msgsnd(msqid, &msg, sizeof(msg), 0) == -1) {
@@ -75,14 +69,13 @@ void launch_worker(int msqid, int pairs_per_worker, int worker_id) {
 void receive_ack_from_workers(int msqid, int num_workers) {
     msgbuf_t msg;
     int count = 0; 
-    while (count != num_workers){
+    for (int i = 0; i < num_workers; i++){
         msgrcv(msqid, &msg, sizeof(msg), BROADCAST_MTYPE, 0);
         if (strcmp(msg.mtext, "ACK") == 0){
-            count++;
+            printf("recieved ACK");
+            continue;
         }
-
     }
-    return;
 }
 
 
@@ -97,7 +90,7 @@ void send_synack_to_workers(int msqid, int num_workers) {
     // Send SYNACK to each worker
     for (int i = 0; i < num_workers; i++) {
         // Send the message
-        if (msgsnd(msqid, &msg, sizeof(msg), 0) == -1) {
+        if (msgsnd(msqid, &msg, sizeof(msg), BROADCAST_MTYPE) == -1) {
             perror("msgsnd");
             exit(EXIT_FAILURE);
         }
@@ -119,7 +112,6 @@ void wait_for_workers(int msqid, int pairs_to_test, char **argv_params) {
             if (worker_done[i] == 1) {
                 continue;
             }
-
             // Check if worker has finished
             pid_t retpid = waitpid(workers[i], NULL, WNOHANG);
             
@@ -217,9 +209,7 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < num_workers; i++) {
         int leftover = num_pairs_to_test % num_workers - i > 0 ? 1 : 0;
         int pairs_per_worker = num_pairs_to_test / num_workers + leftover;
-
         // printf("pairs %d\n", pairs_per_worker);
-       
 
         // TODO: Spawn worker and send it the number of pairs it will test via message queue --> Done
         launch_worker(msqid, pairs_per_worker, i + 1);
@@ -238,10 +228,10 @@ int main(int argc, char *argv[]) {
             strcat(buf2, " ");
             strcat(buf2, argv[i + 2]);
             strncpy(msg.mtext, buf2, sizeof(msg.mtext));
-            // printf("msg %s\n", msg.mtext);
+            printf("msg sent %s\n", msg.mtext);
          
             msg.mtype = worker_id;
-            msgsnd(msqid, &msg, sizeof(msg), 0);
+            msgsnd(msqid, &msg, sizeof(msg), worker_id);
             sent++;
         }
     }

@@ -3,7 +3,6 @@
 // Run the (executable, parameter) pairs in batches of 8 to avoid timeouts due to 
 // having too many child processes running at once
 #define PAIRS_BATCH_SIZE 8
-#define BUFF 255
 
 typedef struct {
     char *executable_path;
@@ -197,17 +196,14 @@ void send_results(int msqid, long mtype, int finished) {
 
 // Send DONE message to autograder to indicate that the worker has finished testing
 void send_done_msg(int msqid, long mtype) {
-    
-
     msgbuf_t msg_buf;
     msg_buf.mtype = mtype;
+    strcpy(msg_buf.mtext, "DONE");
 
     if (msgsnd(msqid, &msg_buf, strlen(msg_buf.mtext) + 1, 0) == -1) {
         perror("msgsnd");
         exit(EXIT_FAILURE);
     }
-
-
 }
 
 
@@ -225,25 +221,20 @@ int main(int argc, char **argv) {
 
     //CHECK
     msgbuf_t msg;
-
-    
-
-    if (msgrcv(msqid, &msg, sizeof(msg), 0, 0) == -1) {
+    if (msgrcv(msqid, &msg, sizeof(msg), worker_id, 0) == -1) {
         perror("msgrcv");
         exit(EXIT_FAILURE);
     }
-    
-    printf("recieved msg 1st chk %s\n", msg.mtext);
+    // printf("recieved msg 1st chk %s\n", msg.mtext);
 
     // TODO: Parse message and set up pairs_t array
-    
     int pairs_to_test = atoi(msg.mtext);
     
     // fprintf("%d", pairs_to_test);
     //pairs_t *pairs;
     pairs = malloc(pairs_to_test * sizeof(pairs_t));
     for (int i = 0; i < pairs_to_test; i++) {
-        pairs[i].executable_path = malloc(100); //executable_paths[i]; NEED TO GET EXECUTABLES
+        pairs[i].executable_path = malloc(255); //executable_paths[i]; NEED TO GET EXECUTABLES
         // pairs[i].parameter = malloc((pairs_to_test) * sizeof(int));
         // pairs[i].status = malloc((pairs_to_test) * sizeof(int));
     }
@@ -252,30 +243,36 @@ int main(int argc, char **argv) {
     //       Messages will have the format ("%s %d", executable_path, parameter). (mtype = worker_id)
    
     for(int i = 0; i < pairs_to_test; i++) {
-        // printf("loop worked\n");
+        // printf("pairs to test %d, i is %d\n", pairs_to_test, i);
         if (msgrcv(msqid, &msg, sizeof(msg), worker_id, 0) == -1) {
             perror("msgrcv");
             exit(EXIT_FAILURE);
         }
         // printf("recieved msg 2nd chk %s\n", msg.mtext);
         // CHECK THIS FOR MALLOC ERROR 
-        strncpy(pairs[i].executable_path, msg.mtext, sizeof(pairs[i].executable_path));
-        printf("executable %s\n", pairs[i].executable_path);
-       
+        strncpy(pairs[i].executable_path, msg.mtext, sizeof(msg.mtext));
+        printf("recieved: %s\n", pairs[i].executable_path);
     }
 
     // TODO: Send ACK message to mq_autograder after all pairs received (mtype = BROADCAST_MTYPE)
+    msgbuf_t ack;
+    ack.mtype = BROADCAST_MTYPE;
+    strcpy(ack.mtext, "ACK");
+    printf("sent ACK\n");
+    msgsnd(msqid, &ack, sizeof(ack), BROADCAST_MTYPE);
 
-    
-        msgbuf_t ack;
-        ack.mtype = BROADCAST_MTYPE;
-        strcpy(ack.mtext, "ACK");
-        msgsnd(msqid, &ack, sizeof(ack), 0);
-    
     
     // TODO: Wait for SYNACK from autograder to start testing (mtype = BROADCAST_MTYPE).
     //       Be careful to account for the possibility of receiving ACK messages just sent.
-
+        msgbuf_t syn;
+        syn.mtype = BROADCAST_MTYPE;
+        for (int i = 0; i < pairs_to_test; i++){
+            msgrcv(msqid, &syn, sizeof(syn), BROADCAST_MTYPE, 0);
+            if (strcmp(syn.mtext, "SYNACK") == 0){
+                continue;
+            }
+            
+        }
 
     // Run the pairs in batches of 8 and send results back to autograder
     for (int i = 0; i < pairs_to_test; i+= PAIRS_BATCH_SIZE) {
@@ -319,7 +316,6 @@ int main(int argc, char **argv) {
     }
     free(pairs);
 
-
     // THIS WAS GIVEN BUT IS GIVING ERRORS 
-    // free(pids);
+    free(pids);
 }
