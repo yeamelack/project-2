@@ -89,6 +89,7 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
 
         #elif PIPE
             // TODO: Pass read end of pipe to child process
+	    close(fd[1]);
             char fdstring[10];
             sprintf(fdstring, "%d", fd[0]);
             printf("fdstring: %s\n", fdstring);
