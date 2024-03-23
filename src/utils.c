@@ -242,7 +242,66 @@ void write_results_to_file(autograder_results_t *results, int num_executables, i
 
 // TODO: Implement this function
 double get_score(char *results_file, char *executable_name) {
-    return 1.0;
+    FILE *fp = fopen(results_file, "r");
+    if (!fp) {
+        perror("Failed to open file");
+        return -1.0;
+    }
+
+    // Read the first line to determine the length of lines
+    char line[255];
+    if (!fgets(line, sizeof(line), fp)) {
+        fclose(fp);
+        return -1.0;
+    }
+    int line_length = strlen(line);
+
+    // Calculate the number of tests from the first line
+    double test_count = 0;
+    for (int i = 0; line[i]; i++) {
+        if (line[i] == '(') test_count++;
+    }
+
+    // Extracting 'x' from "sol_x"
+    int line_number = atoi(executable_name + strlen(executable_name) - 1);
+    printf("%d\n", line_number);
+
+    // Seek to the beginning of the line for the executable_name
+    fseek(fp, (line_number - 1) * line_length, SEEK_SET);
+
+    // Read the line containing the executable's results
+    if (!fgets(line, sizeof(line), fp)) {
+        fclose(fp);
+        return -1.0;
+    }
+
+    fclose(fp);
+
+    // Parse the line for correct answers
+    double correct_count = 0;
+    double incorrect_count = 0;
+    double seg = 0;
+    double stuck_inf = 0;
+    char *token = strtok(line, " ");
+    printf("%s\n", token);
+    while (token) {
+        if (strstr(token, "(incorrect)")){
+            incorrect_count++;
+        }
+        if (strstr(token, "crash")){
+            seg++;
+        }
+        if (strstr(token, "(stuck/inf)")){
+            stuck_inf++;;
+        }
+        correct_count = test_count - seg - incorrect_count - stuck_inf;
+
+
+        printf("%s  ", token);
+        token = strtok(NULL, " ");
+    }
+
+    return (correct_count / test_count);
 }
 
 
