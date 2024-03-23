@@ -46,7 +46,7 @@ void execute_solution(char *executable_path, int param, int batch_idx) {
         // TODO: Redirect STDOUT to output/<executable>.<input> file
         char buffer[255];
         sprintf(buffer, "output/%s.%d", executable_name, param);
-        printf("buffer is %s\n", buffer);
+        // printf("buffer is %s\n", buffer);
         FILE *output = fopen(buffer, "w");
         if(output == -1){
             perror("opening file failed");
@@ -61,9 +61,11 @@ void execute_solution(char *executable_path, int param, int batch_idx) {
 
         // TODO: Input to child program can be handled as in the EXEC case (see template.c)
         pids[batch_idx] = param;
-        printf("%s, %s, %d\n", executable_path, buffer, param);
+        char param_str[10];
+        sprintf(param_str, "%d", param);
+        printf("%s %s %s\n", executable_path, buffer, param_str);
         
-        execl(executable_path, buffer, param, NULL);
+        execl(executable_path, buffer, param_str, NULL);
 
         
         perror("Failed to execute program in worker");
@@ -94,6 +96,7 @@ void monitor_and_evaluate_solutions(int finished) {
     for (int j = 0; j < finished; j++) {
         char *current_exe_path = pairs[finished + j].executable_path;
         int current_param = pairs[finished + j].parameter;
+        
 
         int status;
         pid_t pid = waitpid(pids[j], &status, 0);
@@ -115,6 +118,7 @@ void monitor_and_evaluate_solutions(int finished) {
         //       This should be the same as the evaluation in autograder.c, just updating `pairs` 
         //       instead of `results`.
         if(exited && !signaled){
+
             char *exe =  pairs[finished + j].executable_path;
             FILE *output = fopen(exe, "r");
             char buffer[10];
@@ -125,26 +129,28 @@ void monitor_and_evaluate_solutions(int finished) {
             fclose(output); 
             if (num == 1){
                 pairs[finished + j].status = CORRECT;
-                printf("%d ", pid);
-                printf("correct\n");
+                // printf("%d ", pid);
+                // printf("correct\n");
             }
             else if (num == 0){
                 pairs[finished + j].status = INCORRECT;
-                printf("%d ", pid);
-                printf("incorrect\n");
+                // printf("%d ", pid);
+                // printf("incorrect\n");
             }
         }
 
         else if(signaled && WTERMSIG(status) == SIGSEGV){
             pairs[finished + j].status = SEGFAULT;
-                printf("%d ", pid);
-                printf("segfault\n");
+                // printf("%d ", pid);
+                // printf("segfault\n");
         }
 
         else if(signaled && WTERMSIG(status) == SIGKILL){
             pairs[finished + j].status = STUCK_OR_INFINITE;
-                printf("%d ", pid);
-                printf("stuck or infinite\n");
+            // pairs[finished + j].executable_path = STUCK_OR_INFINITE;
+
+                // printf("%d ", pid);
+                // printf("stuck or infinite\n");
         }
 
         // Mark the process as finished
@@ -159,6 +165,24 @@ void monitor_and_evaluate_solutions(int finished) {
 // VERY WRONG
 void send_results(int msqid, long mtype, int finished) {
     // Format of message should be ("%s %d %d", executable_path, parameter, status)
+    // Format of message should be ("%s %d %d", executable_path, parameter, status)
+
+    int parameter = pairs[finished].parameter;
+    int status = pairs[finished].status;
+    char executable_path = pairs[finished].executable_path;
+    printf("path %s\n", pairs[finished].executable_path);
+   
+    
+    
+    msgbuf_t send_res;
+    send_res.mtype = mtype;
+
+    sprintf(send_res.mtext, "%d %d %d", executable_path, parameter, status);
+    printf("text is %s\n",send_res.mtext);
+    if (msgsnd(msqid, &send_res, strlen(send_res.mtext) + 1, 0) == -1){
+        perror("msgsnd");
+        exit(EXIT_FAILURE);
+    }
 
 }
 
@@ -223,7 +247,7 @@ int main(int argc, char **argv) {
        //strncpy(pairs[i].executable_path, msg.mtext, sizeof(msg.mtext));
         // printf("recieved: %s\n", pairs[i].executable_path);
     }
-    // printf("done receiving executables\n");
+   
     // TODO: Send ACK message to mq_autograder after all pairs received (mtype = BROADCAST_MTYPE)
     msgbuf_t ack;
     ack.mtype = BROADCAST_MTYPE;
@@ -232,13 +256,12 @@ int main(int argc, char **argv) {
         perror("msgsnd");
         exit(EXIT_FAILURE);
     }
-    printf("%s got sent \n", ack.mtext);
+    // printf("%s got sent \n", ack.mtext);
 
 
     
     // TODO: Wait for SYNACK from autograder to start testing (mtype = BROADCAST_MTYPE).
-    //       Be careful to account for the possibility of receiving ACK messages just sent.
-    
+    //       Be careful to account for the possibility of receiving ACK messages just sent.   
     while(1){
         msgbuf_t syn;
         syn.mtype = BROADCAST_MTYPE;
@@ -246,7 +269,7 @@ int main(int argc, char **argv) {
             perror("synack msgrcv\n");
         }
         if (strcmp(syn.mtext, "SYNACK") == 0){
-            printf("recieved SYNACK\n");
+            // printf("recieved SYNACK\n");
             break;
         }
         else{
@@ -264,16 +287,25 @@ int main(int argc, char **argv) {
         pids = malloc(curr_batch_size * sizeof(pid_t));
 
         for (int j = 0; j < curr_batch_size; j++) {
+
             // TODO: Execute the student executable
+            // printf("path %s  param %d j %d\n", pairs[i + j].executable_path, pairs[i + j].parameter, j);
             execute_solution(pairs[i + j].executable_path, pairs[i + j].parameter, j);
         }
+        
 
         // TODO: Setup timer to determine if child process is stuck
         start_timer(TIMEOUT_SECS, timeout_handler);  // Implement this function (src/utils.c)
-
+            for (int j = 0; j < curr_batch_size; j++) {
+                printf("Executable Path before monitor: %s\n", pairs[i + j].executable_path);
+            }
+        
         // TODO: Wait for the batch to finish and check results
-        monitor_and_evaluate_solutions(i);
-
+        monitor_and_evaluate_solutions(pairs_to_test);
+            for (int j = 0; j < curr_batch_size; j++) {
+                printf("Executable Path after monitor: %s\n", pairs[i + j].executable_path);
+            }
+       
         // TODO: Cancel the timer if all child processes have finished
         int count = 0;
         for (int i = 0; i < curr_batch_size; i++){
@@ -284,9 +316,12 @@ int main(int argc, char **argv) {
         if (count == curr_batch_size){
             cancel_timer();  // Implement this function (src/utils.c)
         }
+
         // TODO: Send batch results (intermediate results) back to autograder
         send_results(msqid, worker_id, i);
+        printf("checkpoint\n");
 
+    
         free(pids);
     }
 
@@ -300,5 +335,5 @@ int main(int argc, char **argv) {
     free(pairs);
 
     // THIS WAS GIVEN BUT IS GIVING ERRORS 
-    free(pids);
+    // free(pids);
 }

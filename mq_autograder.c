@@ -68,8 +68,8 @@ void launch_worker(int msqid, int pairs_per_worker, int worker_id) {
 
 // TODO: Receive ACK from all workers using message queue (mtype = BROADCAST_MTYPE)
 void receive_ack_from_workers(int msqid, int num_workers) {
-    printf("before  --> receive ack from workers\n");
-    printf("num_workers %d\n", num_workers);
+    // printf("before  --> receive ack from workers\n");
+    // printf("num_workers %d\n", num_workers);
     for (int i = 0; i < num_workers; i++){
         // printf("i is %d\n", i);
         msgbuf_t msg;
@@ -77,9 +77,9 @@ void receive_ack_from_workers(int msqid, int num_workers) {
             perror("msgrcv\n");
             exit(EXIT_FAILURE);
         }
-        printf("%s --> receive ack from workers\n", msg.mtext);
+        // printf("%s --> receive ack from workers\n", msg.mtext);
         if (strcmp(msg.mtext, "ACK") == 0){
-            printf("recieved ACK\n");
+            // printf("recieved ACK\n");
             continue;
         }
         else
@@ -87,7 +87,7 @@ void receive_ack_from_workers(int msqid, int num_workers) {
             printf("ERROR\n");
         }
     }
-    printf("finished recieve ack\n");
+    // printf("finished recieve ack\n");
 }
 
 
@@ -108,7 +108,7 @@ void send_synack_to_workers(int msqid, int num_workers) {
             perror("msgsnd");
             exit(EXIT_FAILURE);
         }
-        printf("%s\n", msg.mtext);
+        // printf("%s\n", msg.mtext);
         //msgsnd(msqid, &msg, sizeof(msg), 0);
     }
 }
@@ -161,7 +161,11 @@ void wait_for_workers(int msqid, int pairs_to_test, char **argv_params) {
                     exit(EXIT_FAILURE);
                 }
 
-                if (strcmp(executable_path, "DONE") == 0) { //check this
+                // if (msgrcv(msqid, &msg, sizeof(msg.mtext), BROADCAST_MTYPE, 0) == -1){
+                //     perror("ERROR\n");
+                // }
+
+                if (strcmp(msg.mtext, "DONE") == 0) { //check this
                     worker_done[i] = 1;
                     break;
                 }
@@ -256,20 +260,24 @@ int main(int argc, char *argv[]) {
 
     // TODO: Send message to workers to allow them to start testing
     send_synack_to_workers(msqid, num_workers);
+    printf("1 checkoint auto\n");
+
 
     // TODO: Wait for all workers to finish and collect their results from message queue
     wait_for_workers(msqid, num_pairs_to_test, argv + 2);
 
     // TODO: Remove ALL output files (output/<executable>.<input>)
-    
+    printf("2 checkpoint auto\n");
     //check ------------------
     remove_output_files(results, msqid, num_workers, total_params); // --> DOUBLE CHECK THIS WITH TA
 
-
+    printf("3 checkpoint auto\n");
     write_results_to_file(results, num_executables, total_params);
 
     // You can use this to debug your scores function
     // get_score("results.txt", results[0].exe_path);
+
+    printf("4 checkpoint auto\n");
 
     // Print each score to scores.txt
     write_scores_to_file(results, num_executables, "results.txt");
