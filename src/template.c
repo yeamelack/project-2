@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
 
     // TODO: Get input param from the different sources
     #ifdef EXEC
-        param = atoi(argv[0]);
+        param = atoi(argv[1]);
 
         
 

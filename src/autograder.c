@@ -66,7 +66,7 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
         }
         fclose(output);
 
-        //printf("buffer is %s\n", executable_path);
+        printf("buffer is %s\n", executable_path);
         // TODO (Change 2): Handle different cases for input source
         #ifdef EXEC
             execl(executable_path, buffer, input, NULL);
@@ -89,11 +89,11 @@ void execute_solution(char *executable_path, char *input, int batch_idx) {
 
         #elif PIPE
             // TODO: Pass read end of pipe to child process
-	    close(fd[1]);
             char fdstring[10];
             sprintf(fdstring, "%d", fd[0]);
             printf("fdstring: %s\n", fdstring);
             execl(executable_path, executable_name, fdstring , NULL);
+
         #endif
 
         // If exec fails
@@ -149,28 +149,20 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
         int signaled = WIFSIGNALED(status);
 
         if(exited && !signaled){
-
-            char buf2[255];
-            char *exenam2 = get_exe_name(results[tested - curr_batch_size + j].exe_path);
-            sprintf(buf2, "output/%s.%s", exenam2, param) ;
-            // char *exe =  results[tested - curr_batch_size + j].exe_path;
-            printf("exe check %s\n", buf2);
-            FILE *output = fopen(buf2, "r");
-
+            char *exe =  results[tested - curr_batch_size + j].exe_path;
+            FILE *output = fopen(exe, "r");
             char buffer[10];
             int num;
             if(fgets(buffer, sizeof(buffer), output) != NULL){
-                printf("buffer check %s\n", buffer);
                 sscanf(buffer, "%d", &num);
             }
-            printf("num check %d\n", num);
             fclose(output); 
-            if (num == 0){
+            if (num == 1){
                 results[tested - curr_batch_size + j].status[param_idx] = CORRECT;
                 printf("%d ", pid);
                 printf("correct\n");
             }
-            else{
+            else if (num == 0){
                 results[tested - curr_batch_size + j].status[param_idx] = INCORRECT;
                 printf("%d ", pid);
                 printf("incorrect\n");
@@ -193,7 +185,7 @@ void monitor_and_evaluate_solutions(int tested, char *param, int param_idx) {
         //     printf("stuck or infinite 2\n");
         // }    
         // TODO: Also, update the results struct with the status of the child process
-        //*(results[tested - curr_batch_size + j].status) = exit_status;
+        // *(results[tested - curr_batch_size + j].status) = exit_status;
 
         // NOTE: Make sure you are using the output/<executable>.<input> file to determine the status
         //       of the child process, NOT the exit status like in Project 1.
@@ -300,7 +292,7 @@ int main(int argc, char *argv[]) {
     write_results_to_file(results, num_executables, total_params);
 
     // You can use this to debug your scores function
-    get_score("results.txt", results[0].exe_path);
+    // get_score("results.txt", results[0].exe_path);
 
     // Print each score to scores.txt
     write_scores_to_file(results, num_executables, "results.txt");

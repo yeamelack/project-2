@@ -87,17 +87,26 @@ void execute_solution(char *executable_path, int param, int batch_idx) {
 void monitor_and_evaluate_solutions(int finished) {
     // Keep track of finished processes for alarm handler
     //THIS CAUSES MALLOC ERROR CHECK
-    child_status = malloc(finished * sizeof(int));
-    for (int j = 0; j < finished; j++) {
+    //PRINT STATMENTS IN HERE DOESN'T ALLOW PRINTS AFTER EXEC
+    child_status = malloc(curr_batch_size * sizeof(int));
+    for (int j = 0; j < curr_batch_size; j++) {
         child_status[j] = 1;
     }
-
+    // for (int j = 0; j < curr_batch_size; j++) {
+    //     printf("path %s\n", pairs[j].executable_path);
+    // }
+    
     // MAIN EVALUATION LOOP: Wait until each process has finished or timed out
-    for (int j = 0; j < finished; j++) {
+    for (int j = 0; j < curr_batch_size; j++) {
 
         char *current_exe_path = pairs[finished + j].executable_path;
         int current_param = pairs[finished + j].parameter;
-        printf("path %s\n", pairs[finished + j].executable_path);
+        // printf("path %s\n", pairs[finished + j].executable_path);
+        // printf("param %d\n", pairs[finished + j].parameter);
+        // for (int j = 0; j < curr_batch_size; j++) {
+        //     printf("path in for loop%s\n", pairs[finished + j].executable_path);
+        //     printf("finished is %d\n", finished);
+        // }
 
         
 
@@ -121,7 +130,6 @@ void monitor_and_evaluate_solutions(int finished) {
         //       This should be the same as the evaluation in autograder.c, just updating `pairs` 
         //       instead of `results`.
         if(exited && !signaled){
-
             char *exe =  pairs[finished + j].executable_path;
             FILE *output = fopen(exe, "r");
             char buffer[10];
@@ -172,16 +180,19 @@ void send_results(int msqid, long mtype, int finished) {
 
     int parameter = pairs[finished].parameter;
     int status = pairs[finished].status;
-    char executable_path = pairs[finished].executable_path;
-    printf("path %s\n", pairs[finished].executable_path);
+    char *executable_path = pairs[finished].executable_path;
+    // printf("path %s  finished is %d\n", pairs[finished].executable_path, finished);
    
     
     
     msgbuf_t send_res;
     send_res.mtype = mtype;
 
-    sprintf(send_res.mtext, "%d %d %d", executable_path, parameter, status);
-    printf("text is %s\n",send_res.mtext);
+    sprintf(send_res.mtext, "%s %d %d", executable_path, parameter, status);
+    // for (int i = 0; i < 5; i++){
+    //     printf("path is %s  i is %d\n", pairs[i].executable_path, i);
+    // }
+    // printf("text is %s\n",send_res.mtext);
     if (msgsnd(msqid, &send_res, strlen(send_res.mtext) + 1, 0) == -1){
         perror("msgsnd");
         exit(EXIT_FAILURE);
@@ -226,14 +237,15 @@ int main(int argc, char **argv) {
     // TODO: Parse message and set up pairs_t array
     int pairs_to_test = atoi(msg.mtext);
     
-    // fprintf("%d", pairs_to_test);
+    // fprintf("pairs to test %d\n", pairs_to_test);
     //pairs_t *pairs;
     pairs = malloc(pairs_to_test * sizeof(pairs_t));
     for (int i = 0; i < pairs_to_test; i++) {
-        pairs[i].executable_path = malloc(100); //executable_paths[i]; NEED TO GET EXECUTABLES
+        pairs[i].executable_path = malloc(255); //executable_paths[i]; NEED TO GET EXECUTABLES
         // pairs[i].parameter = malloc((pairs_to_test) * sizeof(int));
         // pairs[i].status = malloc((pairs_to_test) * sizeof(int));
     }
+
 
     // TODO: Receive (executable, parameter) pairs from autograder and store them in pairs_t array.
     //       Messages will have the format ("%s %d", executable_path, parameter). (mtype = worker_id)
@@ -247,8 +259,8 @@ int main(int argc, char **argv) {
         // printf("recieved msg 2nd chk %s\n", msg.mtext);
         // CHECK THIS FOR MALLOC ERROR 
         sscanf(msg.mtext, "%s %d",pairs[i].executable_path, &pairs[i].parameter);
-       strncpy(pairs[i].executable_path, msg.mtext, sizeof(msg.mtext));
-        printf("recieved: %s\n", pairs[i].executable_path);
+       //strncpy(pairs[i].executable_path, msg.mtext, sizeof(msg.mtext));
+        // printf("recieved: %s\n", pairs[i].executable_path);
     }
    
     // TODO: Send ACK message to mq_autograder after all pairs received (mtype = BROADCAST_MTYPE)
@@ -259,7 +271,7 @@ int main(int argc, char **argv) {
         perror("msgsnd");
         exit(EXIT_FAILURE);
     }
-    // printf("%s got sent \n", ack.mtext);
+    
 
 
     
@@ -295,20 +307,22 @@ int main(int argc, char **argv) {
             // printf("path %s  param %d j %d\n", pairs[i + j].executable_path, pairs[i + j].parameter, j);
             execute_solution(pairs[i + j].executable_path, pairs[i + j].parameter, j);
         }
+        // break;
         
 
         // TODO: Setup timer to determine if child process is stuck
         start_timer(TIMEOUT_SECS, timeout_handler);  // Implement this function (src/utils.c)
 
             for (int j = 0; j < curr_batch_size; j++) {
-                printf("Executable Path before monitor: %s\n", pairs[i + j].executable_path);
+                printf("Executable Path before monitor: %s   j is %d\n", pairs[j].executable_path, j);
             }
         
         // TODO: Wait for the batch to finish and check results
         monitor_and_evaluate_solutions(pairs_to_test);
 
             for (int j = 0; j < curr_batch_size; j++) {
-                printf("Executable Path after monitor: %s\n", pairs[i + j].executable_path);
+                printf("curr batch size %d\n", curr_batch_size);
+                printf("Executable Path after monitor: %s\n", pairs[j].executable_path);
             }
        
         // TODO: Cancel the timer if all child processes have finished
@@ -323,8 +337,14 @@ int main(int argc, char **argv) {
         }
 
         // TODO: Send batch results (intermediate results) back to autograder
+        // printf("i is %d\n", i);
+        // for (int i = 0; i < curr_batch_size; i++){
+        //     send_results(msqid, worker_id, i);
+        // }
         send_results(msqid, worker_id, i);
-        printf("checkpoint\n");
+
+        
+        // printf("checkpoint\n");
 
     
         free(pids);
