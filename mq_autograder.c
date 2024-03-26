@@ -41,25 +41,23 @@ void launch_worker(int msqid, int pairs_per_worker, int worker_id) {
     // Parent process
     else if (pid > 0) {
         // TODO: Send the total number of pairs to worker via message queue (mtype = worker_id)
-       
        //CHECK MIGHT BE GOOD
-        msgbuf_t msg;
+        msgbuf_t msg; 
         // char pairs_str[10];
         // snprintf(pairs_str, sizeof(pairs_str), "%d", pairs_per_worker);
         msg.mtype = worker_id; // Use worker_id as the message type for identification
         //strncpy(msg.mtext, "pairs_str", sizeof(msg.mtext)); 
         // Send the message
-        sprintf(msg.mtext, "%d", pairs_per_worker);
+        sprintf(msg.mtext, "%d", pairs_per_worker); // storing pairs_per_worker in our buf 
 
-        if (msgsnd(msqid, &msg, sizeof(msg.mtext), 0) == -1) {
-            perror("msgsnd failed");
+        if (msgsnd(msqid, &msg, sizeof(msg.mtext), 0) == -1) { // sending our message and error checking at the same time 
+            perror("msgsnd failed"); 
         }
 
         // Store the worker's pid for monitoring
         workers[worker_id - 1] = pid;
     }
-    // Fork failed 
-    else {
+    else {// Fork failed 
         perror("Failed to fork worker");
         exit(1);
     }
@@ -101,10 +99,10 @@ void send_synack_to_workers(int msqid, int num_workers) {
         
         msgbuf_t msg;
         // Prepare the SYNACK message
-        msg.mtype = BROADCAST_MTYPE;
-        strcpy(msg.mtext, "SYNACK");
+        msg.mtype = BROADCAST_MTYPE; 
+        strcpy(msg.mtext, "SYNACK"); // copying the text to be SYNACK
         // Send the message
-        if (msgsnd(msqid, &msg, sizeof(msg.mtext), 0) == -1) {
+        if (msgsnd(msqid, &msg, sizeof(msg.mtext), 0) == -1) { // sending our messgage and error checking at the same time 
             perror("msgsnd");
             exit(EXIT_FAILURE);
         }
@@ -116,13 +114,15 @@ void send_synack_to_workers(int msqid, int num_workers) {
 
 // Wait for all workers to finish and collect their results from message queue
 void wait_for_workers(int msqid, int pairs_to_test, char **argv_params) {
+    printf("AHHHHHHHHHH\n");
     int received = 0;
     worker_done = malloc(num_workers * sizeof(int));
     for (int i = 0; i < num_workers; i++) {
         worker_done[i] = 0;
     }
 
-    while (received < pairs_to_test) {
+    while (received < pairs_to_test) { // if we have more pairs to test
+        printf("AHHHHHHHHHH first\n");
         for (int i = 0; i < num_workers; i++) {
             if (worker_done[i] == 1) {
                 continue;
@@ -134,9 +134,14 @@ void wait_for_workers(int msqid, int pairs_to_test, char **argv_params) {
             if (retpid > 0)
                 // Worker has finished and still has messages to receive
                 msgflg = 0;
-            else if (retpid == 0)
+            else if (retpid == 0){
                 // Worker is still running -> receive intermediate results
                 msgflg = IPC_NOWAIT;
+                printf("AHHHHHHHHHH 1\n");
+
+            }
+                
+
             else {
                 // Error
                 perror("Failed to wait for child process");
@@ -147,15 +152,25 @@ void wait_for_workers(int msqid, int pairs_to_test, char **argv_params) {
             //       If message is "DONE", set worker_done[i] to 1 and break out of loop.
             //       Messages will have the format ("%s %d %d", executable_path, parameter, status)
             //       so consider using sscanf() to parse the message.
-            msgbuf_t msg;
-            int parameter, status;
-            char executable_path[255];
+           
             while (1) {
-                if (msgrcv(msqid, &msg, sizeof(msg.mtext), BROADCAST_MTYPE, 0) < 0) {
+                msgbuf_t msg;
+                int parameter, status;
+                long mtype = i + 1;
+                char executable_path[255];
+                if (msgrcv(msqid, &msg, sizeof(msg.mtext), mtype, 0) < 0) {
+                    if(msgflg == IPC_NOWAIT && errno == ENOMSG)
+                    {
+                        break;
+                    }
                     perror("msgrcv failed");
                     exit(EXIT_FAILURE);
                 }
 
+                if (strcmp(msg.mtext, "DONE") == 0) { //check this
+                    worker_done[i] = 1;
+                    break;
+                }
                 if (sscanf(msg.mtext, "%s %d %d", executable_path, &parameter, &status) != 3){
                     perror("Received message format is incorrect");
                     exit(EXIT_FAILURE);
@@ -165,23 +180,38 @@ void wait_for_workers(int msqid, int pairs_to_test, char **argv_params) {
                 //     perror("ERROR\n");
                 // }
 
-                if (strcmp(msg.mtext, "DONE") == 0) { //check this
-                    worker_done[i] = 1;
-                    break;
-                }
+               
 
                 for (int j = 0; j < num_executables; j++) {
-                    int paramIndex = parameter - 1;
-                    if (paramIndex >= 0 && paramIndex < total_params) {
-                        results[j].params_tested[paramIndex] = parameter;
-                        results[j].status[paramIndex] = status;
-                    }
-                }
-            }
-        }
-    }
+                    if(strcmp(results[j].exe_path,executable_path) == 0)
+                    {
+                        for(int k = 0; k < total_params; k++)
+                        {
+                            int argv_param = atoi(argv_params[k]);
+                            if(argv_param == parameter)
+                            {
+                                results[j].params_tested[k] = parameter;
+                                results[j].status[k] = status;
+                                break;
 
-    free(worker_done);
+                            }
+                        }
+                        break;
+                    }  
+                }
+                received++;
+                printf("AHHHHHHHHHH loop\n");
+
+            }
+            printf("recieved %d\n", received);
+            printf("pairs to test %d\n", pairs_to_test);
+
+        }
+        
+    }               
+    printf("AHHHHHHHHHH b4 free\n");
+
+    free(worker_done); // freeing 
 }
 
 
@@ -296,6 +326,10 @@ int main(int argc, char *argv[]) {
     free(results);
     free(executable_paths);
     free(workers);
+    
+    return 0;
+}
+
     
     return 0;
 }
